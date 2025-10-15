@@ -4,14 +4,16 @@ const WebSocket = require('ws');
 const path = require('path');
 const ProjectMonitor = require('./ProjectMonitor');
 const ConfigManager = require('./ConfigManager');
+const UpdateManager = require('./UpdateManager');
 
 /**
  * CADI Monitor Server
  * Manages multiple ProjectMonitors and provides REST + WebSocket API
  */
 class MonitorServer {
-  constructor(configPath = null) {
+  constructor(configPath = null, templatePath = null) {
     this.configManager = new ConfigManager(configPath);
+    this.updateManager = templatePath ? new UpdateManager(templatePath) : null;
     this.projects = new Map(); // Map<projectId, ProjectMonitor>
     this.app = express();
     this.server = http.createServer(this.app);
@@ -20,6 +22,11 @@ class MonitorServer {
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
+
+    // Setup update manager event listeners
+    if (this.updateManager) {
+      this.setupUpdateManagerEvents();
+    }
   }
 
   /**
@@ -232,9 +239,180 @@ class MonitorServer {
       }
     });
 
+    // Update endpoints
+    if (this.updateManager) {
+      // Analyze what would change
+      this.app.get('/api/updates/:id/analyze', async (req, res) => {
+        try {
+          const monitor = this.projects.get(req.params.id);
+          if (!monitor) {
+            return res.status(404).json({ error: 'Project not found' });
+          }
+
+          const analysis = await this.updateManager.analyzeUpdates(monitor.path);
+          res.json(analysis);
+        } catch (error) {
+          res.status(500).json({ error: error.message });
+        }
+      });
+
+      // Apply updates
+      this.app.post('/api/updates/:id/apply', async (req, res) => {
+        try {
+          const monitor = this.projects.get(req.params.id);
+          if (!monitor) {
+            return res.status(404).json({ error: 'Project not found' });
+          }
+
+          const options = {
+            dryRun: req.body.dryRun || false,
+            skipBackup: req.body.skipBackup || false,
+            preserveCustom: req.body.preserveCustom !== false
+          };
+
+          const result = await this.updateManager.applyUpdates(monitor.path, options);
+          res.json(result);
+        } catch (error) {
+          res.status(500).json({ error: error.message });
+        }
+      });
+
+      // List backups
+      this.app.get('/api/updates/:id/backups', (req, res) => {
+        try {
+          const monitor = this.projects.get(req.params.id);
+          if (!monitor) {
+            return res.status(404).json({ error: 'Project not found' });
+          }
+
+          const backups = this.updateManager.listBackups(monitor.path);
+          res.json({ backups });
+        } catch (error) {
+          res.status(500).json({ error: error.message });
+        }
+      });
+
+      // Rollback to backup
+      this.app.post('/api/updates/:id/rollback', async (req, res) => {
+        try {
+          const monitor = this.projects.get(req.params.id);
+          if (!monitor) {
+            return res.status(404).json({ error: 'Project not found' });
+          }
+
+          const backupPath = req.body.backupPath || null;
+          const result = await this.updateManager.rollback(monitor.path, backupPath);
+          res.json(result);
+        } catch (error) {
+          res.status(500).json({ error: error.message });
+        }
+      });
+
+      // Batch analyze multiple projects
+      this.app.post('/api/updates/batch/analyze', async (req, res) => {
+        try {
+          const projectIds = req.body.projects || [];
+          const results = {};
+
+          for (const projectId of projectIds) {
+            const monitor = this.projects.get(projectId);
+            if (monitor) {
+              results[projectId] = await this.updateManager.analyzeUpdates(monitor.path);
+            }
+          }
+
+          res.json(results);
+        } catch (error) {
+          res.status(500).json({ error: error.message });
+        }
+      });
+
+      // Batch apply updates to multiple projects
+      this.app.post('/api/updates/batch/apply', async (req, res) => {
+        try {
+          const projectIds = req.body.projects || [];
+          const options = {
+            dryRun: req.body.dryRun || false,
+            skipBackup: req.body.skipBackup || false,
+            preserveCustom: req.body.preserveCustom !== false
+          };
+
+          const results = {};
+
+          for (const projectId of projectIds) {
+            const monitor = this.projects.get(projectId);
+            if (monitor) {
+              results[projectId] = await this.updateManager.applyUpdates(monitor.path, options);
+            }
+          }
+
+          res.json(results);
+        } catch (error) {
+          res.status(500).json({ error: error.message });
+        }
+      });
+    }
+
     // Serve the main UI
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, '../public/index.html'));
+    });
+  }
+
+  /**
+   * Setup update manager event listeners
+   */
+  setupUpdateManagerEvents() {
+    this.updateManager.on('backupCreated', (data) => {
+      console.log(`✓ Backup created for ${data.projectPath}`);
+      this.broadcast({
+        type: 'updateEvent',
+        event: 'backupCreated',
+        ...data
+      });
+    });
+
+    this.updateManager.on('fileAdded', (data) => {
+      this.broadcast({
+        type: 'updateEvent',
+        event: 'fileAdded',
+        ...data
+      });
+    });
+
+    this.updateManager.on('fileModified', (data) => {
+      this.broadcast({
+        type: 'updateEvent',
+        event: 'fileModified',
+        ...data
+      });
+    });
+
+    this.updateManager.on('updateComplete', (data) => {
+      console.log(`✓ Update complete for ${data.projectPath}`);
+      this.broadcast({
+        type: 'updateEvent',
+        event: 'updateComplete',
+        ...data
+      });
+    });
+
+    this.updateManager.on('updateFailed', (data) => {
+      console.error(`✗ Update failed for ${data.projectPath}: ${data.error}`);
+      this.broadcast({
+        type: 'updateEvent',
+        event: 'updateFailed',
+        ...data
+      });
+    });
+
+    this.updateManager.on('rollbackComplete', (data) => {
+      console.log(`✓ Rollback complete for ${data.projectPath}`);
+      this.broadcast({
+        type: 'updateEvent',
+        event: 'rollbackComplete',
+        ...data
+      });
     });
   }
 
