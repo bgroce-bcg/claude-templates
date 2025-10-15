@@ -59,25 +59,90 @@ fi
 # Check if .claude directory already exists
 if [ -d "$TARGET_DIR/.claude" ]; then
     echo -e "${YELLOW}Warning: .claude directory already exists${NC}"
-    read -p "Do you want to update it? This will overwrite existing base files. (y/N): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Skipping base configuration update."
-        echo -e "${BLUE}Will only add framework-specific configurations if requested...${NC}"
+    echo ""
+
+    # Check for custom agents/commands (files not in cadi/ subdirectory)
+    CUSTOM_AGENTS=$(find "$TARGET_DIR/.claude/agents" -maxdepth 1 -type f -name "*.md" 2>/dev/null | wc -l)
+    CUSTOM_COMMANDS=$(find "$TARGET_DIR/.claude/commands" -maxdepth 1 -type f -name "*.md" 2>/dev/null | wc -l)
+
+    if [ "$CUSTOM_AGENTS" -gt 0 ] || [ "$CUSTOM_COMMANDS" -gt 0 ]; then
+        echo -e "${BLUE}Custom files detected:${NC}"
+        [ "$CUSTOM_AGENTS" -gt 0 ] && echo "  - $CUSTOM_AGENTS custom agent(s) in .claude/agents/"
+        [ "$CUSTOM_COMMANDS" -gt 0 ] && echo "  - $CUSTOM_COMMANDS custom command(s) in .claude/commands/"
+        echo ""
+        echo "Options:"
+        echo "  1) Backup custom files, install CADI structure (recommended)"
+        echo "  2) Skip update (keeps everything as-is)"
+        echo ""
+        read -p "Choose option (1/2): " -n 1 -r
+        echo
+
+        if [[ $REPLY == "1" ]]; then
+            # Create backup directory
+            BACKUP_DIR="$TARGET_DIR/.claude-backup-$(date +%Y%m%d-%H%M%S)"
+            mkdir -p "$BACKUP_DIR/agents"
+            mkdir -p "$BACKUP_DIR/commands"
+
+            # Backup custom agents (only top-level files, not cadi/)
+            if [ "$CUSTOM_AGENTS" -gt 0 ]; then
+                find "$TARGET_DIR/.claude/agents" -maxdepth 1 -type f -name "*.md" -exec cp {} "$BACKUP_DIR/agents/" \; 2>/dev/null
+                echo -e "${GREEN}✓ Backed up custom agents to $BACKUP_DIR/agents/${NC}"
+            fi
+
+            # Backup custom commands (only top-level files, not cadi/)
+            if [ "$CUSTOM_COMMANDS" -gt 0 ]; then
+                find "$TARGET_DIR/.claude/commands" -maxdepth 1 -type f -name "*.md" -exec cp {} "$BACKUP_DIR/commands/" \; 2>/dev/null
+                echo -e "${GREEN}✓ Backed up custom commands to $BACKUP_DIR/commands/${NC}"
+            fi
+
+            # Remove old directories
+            rm -rf "$TARGET_DIR/.claude/agents"
+            rm -rf "$TARGET_DIR/.claude/commands"
+
+            # Install fresh CADI structure
+            mkdir -p "$TARGET_DIR/.claude/agents"
+            mkdir -p "$TARGET_DIR/.claude/commands"
+            cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
+
+            # Restore custom files to root of agents/commands (not in cadi/)
+            if [ "$CUSTOM_AGENTS" -gt 0 ]; then
+                cp "$BACKUP_DIR/agents/"*.md "$TARGET_DIR/.claude/agents/" 2>/dev/null || true
+                echo -e "${GREEN}✓ Restored custom agents${NC}"
+            fi
+
+            if [ "$CUSTOM_COMMANDS" -gt 0 ]; then
+                cp "$BACKUP_DIR/commands/"*.md "$TARGET_DIR/.claude/commands/" 2>/dev/null || true
+                echo -e "${GREEN}✓ Restored custom commands${NC}"
+            fi
+
+            find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
+            echo -e "${GREEN}✓ Updated .claude directory${NC}"
+        else
+            echo "Skipping base configuration update."
+        fi
     else
-        echo -e "${BLUE}Updating base Claude configuration...${NC}"
+        # No custom files, safe to clean install
+        echo "This will:"
+        echo "  - Remove existing .claude/agents/ directory"
+        echo "  - Remove existing .claude/commands/ directory"
+        echo "  - Install fresh CADI structure"
+        echo "  - Preserve .claude/project.db"
+        echo ""
+        read -p "Do you want to continue? (y/N): " -n 1 -r
+        echo
 
-        # Create directories if they don't exist
-        mkdir -p "$TARGET_DIR/.claude/agents"
-        mkdir -p "$TARGET_DIR/.claude/commands"
-
-        # Copy base files (will overwrite)
-        cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
-
-        # Remove Windows Zone.Identifier files if they exist
-        find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
-
-        echo -e "${GREEN}✓ Updated .claude directory${NC}"
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo -e "${BLUE}Updating base Claude configuration...${NC}"
+            rm -rf "$TARGET_DIR/.claude/agents"
+            rm -rf "$TARGET_DIR/.claude/commands"
+            mkdir -p "$TARGET_DIR/.claude/agents"
+            mkdir -p "$TARGET_DIR/.claude/commands"
+            cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
+            find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
+            echo -e "${GREEN}✓ Updated .claude directory${NC}"
+        else
+            echo "Skipping base configuration update."
+        fi
     fi
 else
     # Fresh installation
@@ -169,6 +234,61 @@ for dir in "${DIRECTORIES[@]}"; do
     echo -e "${GREEN}✓ Created $dir${NC}"
 done
 
+# Initialize project database
+echo -e "${BLUE}Initializing project database...${NC}"
+
+DB_PATH="$TARGET_DIR/.claude/project.db"
+
+# Check if sqlite3 is available
+if ! command -v sqlite3 &> /dev/null; then
+    echo -e "${YELLOW}Warning: sqlite3 not found. Please install sqlite3 to use database features.${NC}"
+    echo -e "${YELLOW}You can initialize the database later by running: /db-init${NC}"
+else
+    # Create the database with schema
+    sqlite3 "$DB_PATH" << 'EOF'
+CREATE TABLE IF NOT EXISTS features (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    planning_doc_path TEXT NOT NULL,
+    summary TEXT,
+    status TEXT CHECK(status IN ('planning', 'ready', 'in_progress', 'completed')) DEFAULT 'planning',
+    priority INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    feature_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    objectives TEXT,
+    verification_criteria TEXT,
+    order_index INTEGER NOT NULL,
+    status TEXT CHECK(status IN ('pending', 'in_progress', 'completed')) DEFAULT 'pending',
+    depends_on INTEGER,
+    estimated_hours REAL,
+    actual_hours REAL,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    notes TEXT,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+    FOREIGN KEY (depends_on) REFERENCES sections(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sections_feature_status ON sections(feature_id, status);
+CREATE INDEX IF NOT EXISTS idx_sections_order ON sections(feature_id, order_index);
+EOF
+
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓ Created project.db${NC}"
+    else
+        echo -e "${YELLOW}Warning: Failed to create project.db${NC}"
+        echo -e "${YELLOW}You can initialize it later by running: /db-init${NC}"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}Project initialization complete!${NC}"
 echo ""
@@ -183,6 +303,7 @@ fi
 echo ""
 echo "Directory structure:"
 echo "  .claude/         - Claude configuration and commands"
+echo "  .claude/project.db - Project planning database"
 echo "  docs/backend/    - Backend documentation"
 echo "  docs/frontend/   - Frontend documentation"
 echo "  docs/plans/      - Project plans"
