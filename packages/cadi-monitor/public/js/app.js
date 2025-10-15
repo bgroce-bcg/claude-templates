@@ -148,6 +148,19 @@ class CADIMonitor {
       this.handleAddProject();
     });
 
+    // Delete project modal
+    document.getElementById('closeDeleteModalBtn').addEventListener('click', () => {
+      this.hideDeleteProjectModal();
+    });
+
+    document.getElementById('cancelDeleteBtn').addEventListener('click', () => {
+      this.hideDeleteProjectModal();
+    });
+
+    document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
+      this.handleDeleteProject();
+    });
+
     // View tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -160,6 +173,12 @@ class CADIMonitor {
     document.getElementById('addProjectModal').addEventListener('click', (e) => {
       if (e.target.id === 'addProjectModal') {
         this.hideAddProjectModal();
+      }
+    });
+
+    document.getElementById('deleteProjectModal').addEventListener('click', (e) => {
+      if (e.target.id === 'deleteProjectModal') {
+        this.hideDeleteProjectModal();
       }
     });
 
@@ -220,6 +239,11 @@ class CADIMonitor {
           <div class="project-item-header">
             <div class="project-color" style="background-color: ${project.color}"></div>
             <div class="project-name">${this.escapeHtml(project.name)}</div>
+            <button class="btn-icon btn-delete" data-project-id="${project.id}" title="Remove project" style="margin-left: auto; padding: 0.25rem;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M11 1.5v-1h-6v1h-3.5v1h13v-1h-3.5zm-7.5 14h9l1-12h-11l1 12z" fill="currentColor"/>
+              </svg>
+            </button>
           </div>
           <div class="project-stats">
             <div class="project-stat">
@@ -237,9 +261,22 @@ class CADIMonitor {
 
     // Add click listeners
     container.querySelectorAll('.project-item').forEach(item => {
-      item.addEventListener('click', () => {
+      item.addEventListener('click', (e) => {
+        // Don't select project if clicking delete button
+        if (e.target.closest('.btn-delete')) {
+          return;
+        }
         const projectId = item.dataset.projectId;
         this.selectProject(projectId);
+      });
+    });
+
+    // Add delete button listeners
+    container.querySelectorAll('.btn-delete').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent project selection
+        const projectId = btn.dataset.projectId;
+        this.showDeleteProjectModal(projectId);
       });
     });
   }
@@ -736,6 +773,69 @@ class CADIMonitor {
     } catch (error) {
       console.error('Failed to add project:', error);
       alert('Failed to add project. Check console for details.');
+    }
+  }
+
+  /**
+   * Show delete project modal
+   */
+  showDeleteProjectModal(projectId) {
+    const project = this.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    // Store project ID for deletion
+    this.projectToDelete = projectId;
+
+    // Update modal content
+    document.getElementById('deleteProjectName').textContent = project.name;
+    document.getElementById('deleteProjectPath').textContent = project.path;
+
+    // Show modal
+    document.getElementById('deleteProjectModal').classList.add('active');
+  }
+
+  /**
+   * Hide delete project modal
+   */
+  hideDeleteProjectModal() {
+    document.getElementById('deleteProjectModal').classList.remove('active');
+    this.projectToDelete = null;
+  }
+
+  /**
+   * Handle project deletion
+   */
+  async handleDeleteProject() {
+    if (!this.projectToDelete) return;
+
+    const btn = document.getElementById('confirmDeleteBtn');
+    btn.disabled = true;
+    btn.textContent = 'Removing...';
+
+    try {
+      const response = await fetch(`/api/config/projects/${this.projectToDelete}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        alert(`Failed to remove project: ${error.error}`);
+        return;
+      }
+
+      // If the deleted project was selected, clear selection
+      if (this.selectedProject === this.projectToDelete) {
+        this.selectedProject = null;
+      }
+
+      this.hideDeleteProjectModal();
+      this.loadProjects();
+    } catch (error) {
+      console.error('Failed to remove project:', error);
+      alert('Failed to remove project. Check console for details.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Remove Project';
     }
   }
 

@@ -759,6 +759,7 @@ body {
 /* Buttons */
 .btn-primary,
 .btn-secondary,
+.btn-danger,
 .btn-icon {
     border: none;
     cursor: pointer;
@@ -787,6 +788,16 @@ body {
 
 .btn-secondary:hover {
     background-color: var(--bg-hover);
+}
+
+.btn-danger {
+    background-color: var(--error);
+    color: white;
+    padding: 0.5rem 1rem;
+}
+
+.btn-danger:hover {
+    background-color: #b91c1c;
 }
 
 .btn-block {
