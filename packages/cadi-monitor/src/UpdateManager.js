@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
+const SchemaManager = require('./SchemaManager');
 
 /**
  * Manages safe updates to CADI projects
@@ -16,6 +17,7 @@ class UpdateManager extends EventEmitter {
     // Path to base-claude template (e.g., /home/user/claude-templates/base-claude)
     this.templatePath = templatePath;
     this.backupDir = '.claude-backup';
+    this.schemaManager = new SchemaManager();
   }
 
   /**
@@ -31,6 +33,7 @@ class UpdateManager extends EventEmitter {
         unchanged: [],  // Files that are identical
         custom: []      // Custom files not in template
       },
+      schema: null,     // Database schema status
       safe: true,
       errors: []
     };
@@ -81,6 +84,23 @@ class UpdateManager extends EventEmitter {
         'commands',
         analysis
       );
+
+      // Check database schema
+      const dbPath = path.join(projectClaudeDir, 'project.db');
+      if (fs.existsSync(dbPath)) {
+        try {
+          analysis.schema = this.schemaManager.checkSchema(dbPath);
+
+          // Schema needing migration is not an error - it will be handled during update
+          // Just store the schema status for the UI to display
+        } catch (error) {
+          analysis.safe = false;
+          analysis.errors.push(`Schema check failed: ${error.message}`);
+        }
+      } else {
+        // Database not found is a warning but not critical
+        analysis.schema = { valid: false, errors: ['Database file not found'] };
+      }
 
     } catch (error) {
       analysis.safe = false;
@@ -291,6 +311,7 @@ class UpdateManager extends EventEmitter {
         modified: [],
         skipped: []
       },
+      schemaMigration: null,
       errors: []
     };
 
@@ -354,6 +375,45 @@ class UpdateManager extends EventEmitter {
       // Report custom files (not touched)
       if (preserveCustom) {
         result.applied.skipped = analysis.changes.custom.map(item => item.path);
+      }
+
+      // Apply database schema migrations if needed
+      if (analysis.schema && analysis.schema.needsMigration) {
+        const dbPath = path.join(projectClaudeDir, 'project.db');
+
+        this.emit('schemaMigrationStarted', {
+          projectPath,
+          currentVersion: analysis.schema.currentVersion,
+          targetVersion: analysis.schema.expectedVersion
+        });
+
+        if (!dryRun) {
+          result.schemaMigration = await this.schemaManager.migrateSchema(dbPath);
+
+          if (!result.schemaMigration.success) {
+            result.errors.push(...result.schemaMigration.errors.map(e => e.error || e));
+            result.success = false;
+
+            this.emit('schemaMigrationFailed', {
+              projectPath,
+              errors: result.schemaMigration.errors
+            });
+
+            return result;
+          }
+
+          this.emit('schemaMigrationComplete', {
+            projectPath,
+            migrations: result.schemaMigration.appliedMigrations
+          });
+        } else {
+          // For dry run, just report what would be done
+          const plan = this.schemaManager.getMigrationPlan(dbPath);
+          result.schemaMigration = {
+            dryRun: true,
+            plan
+          };
+        }
       }
 
       result.success = true;

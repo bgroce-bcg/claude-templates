@@ -86,9 +86,9 @@ class UpdatesManager {
       // Render update cards
       this.renderUpdateCards();
 
-      // Count projects with updates
+      // Count projects with updates (including schema migrations)
       const projectsWithUpdates = Object.values(results).filter(a =>
-        a.changes.added.length > 0 || a.changes.modified.length > 0
+        a.changes.added.length > 0 || a.changes.modified.length > 0 || (a.schema && a.schema.needsMigration)
       ).length;
 
       if (projectsWithUpdates > 0) {
@@ -137,16 +137,17 @@ class UpdatesManager {
       if (!project) return '';
 
       const hasUpdates = analysis.changes.added.length > 0 || analysis.changes.modified.length > 0;
+      const hasSchemaUpdates = analysis.schema && analysis.schema.needsMigration;
       const totalChanges = analysis.changes.added.length + analysis.changes.modified.length;
 
       return `
-        <div class="update-card ${hasUpdates ? 'has-updates' : 'up-to-date'}">
+        <div class="update-card ${hasUpdates || hasSchemaUpdates ? 'has-updates' : 'up-to-date'}">
           <div class="update-card-header">
             <div>
               <div class="update-card-title">${this.monitor.escapeHtml(project.name)}</div>
               <div class="update-card-status">
-                <span class="update-badge ${hasUpdates ? 'available' : 'up-to-date'}">
-                  ${hasUpdates ? `${totalChanges} update(s)` : 'Up to date'}
+                <span class="update-badge ${hasUpdates || hasSchemaUpdates ? 'available' : 'up-to-date'}">
+                  ${hasUpdates || hasSchemaUpdates ? `${totalChanges} update(s)${hasSchemaUpdates ? ' + DB' : ''}` : 'Up to date'}
                 </span>
               </div>
             </div>
@@ -169,10 +170,18 @@ class UpdatesManager {
               <span class="update-change-label">Custom files</span>
               <span class="update-change-value">${analysis.changes.custom.length}</span>
             </div>
+            ${hasSchemaUpdates ? `
+            <div class="update-change-item" style="border-top: 1px solid var(--border); margin-top: 0.5rem; padding-top: 0.5rem;">
+              <span class="update-change-label">DB Schema</span>
+              <span class="update-change-value has-changes">
+                v${analysis.schema.currentVersion} → v${analysis.schema.expectedVersion}
+              </span>
+            </div>
+            ` : ''}
           </div>
 
           <div class="update-card-actions">
-            ${hasUpdates ? `
+            ${hasUpdates || hasSchemaUpdates ? `
               <button class="btn-primary btn-block" data-action="preview" data-project="${projectId}">
                 Preview & Update
               </button>
@@ -238,7 +247,44 @@ class UpdatesManager {
             <div class="update-preview-stat-value" style="color: var(--info)">${analysis.changes.custom.length}</div>
             <div class="update-preview-stat-label">Custom (Preserved)</div>
           </div>
+          ${analysis.schema && analysis.schema.needsMigration ? `
+          <div class="update-preview-stat">
+            <div class="update-preview-stat-value" style="color: var(--primary)">v${analysis.schema.expectedVersion}</div>
+            <div class="update-preview-stat-label">DB Schema</div>
+          </div>
+          ` : ''}
         </div>
+
+        ${analysis.schema && analysis.schema.needsMigration ? `
+          <div style="background: var(--card-bg); border: 1px solid var(--primary); border-radius: 0.5rem; padding: 1rem; margin-bottom: 1.5rem;">
+            <h4 style="margin: 0 0 0.75rem 0; color: var(--primary);">🗄️ Database Schema Migration</h4>
+            <p style="margin: 0 0 0.5rem 0;">Current version: <strong>v${analysis.schema.currentVersion}</strong> → Target: <strong>v${analysis.schema.expectedVersion}</strong></p>
+
+            ${analysis.schema.missingTables && analysis.schema.missingTables.length > 0 ? `
+              <div style="margin-top: 0.75rem;">
+                <strong>Missing tables:</strong>
+                <ul style="margin: 0.25rem 0 0 1.5rem;">
+                  ${analysis.schema.missingTables.map(table => `<li><code>${table}</code></li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+
+            ${analysis.schema.missingColumns && Object.keys(analysis.schema.missingColumns).length > 0 ? `
+              <div style="margin-top: 0.75rem;">
+                <strong>Missing columns:</strong>
+                <ul style="margin: 0.25rem 0 0 1.5rem;">
+                  ${Object.entries(analysis.schema.missingColumns).map(([table, cols]) =>
+                    `<li><code>${table}</code>: ${cols.join(', ')}</li>`
+                  ).join('')}
+                </ul>
+              </div>
+            ` : ''}
+
+            <p style="margin: 0.75rem 0 0 0; font-size: 0.875rem; color: var(--text-secondary);">
+              ℹ️ The database will be automatically migrated during the update process.
+            </p>
+          </div>
+        ` : ''}
 
         ${analysis.changes.added.length > 0 ? `
           <h4 style="margin-bottom: 0.75rem;">New Files</h4>
@@ -340,6 +386,14 @@ class UpdatesManager {
           <h3 style="margin-bottom: 0.5rem;">✓ Update Successful!</h3>
           <p>Added: ${result.applied.added.length} files</p>
           <p>Modified: ${result.applied.modified.length} files</p>
+          ${result.schemaMigration && result.schemaMigration.appliedMigrations && result.schemaMigration.appliedMigrations.length > 0 ? `
+            <p style="margin-top: 0.75rem;"><strong>🗄️ Database Migrations Applied:</strong></p>
+            <ul style="margin: 0.25rem 0 0 1.5rem;">
+              ${result.schemaMigration.appliedMigrations.map(m =>
+                `<li>v${m.version}: ${this.monitor.escapeHtml(m.description)}</li>`
+              ).join('')}
+            </ul>
+          ` : ''}
           ${result.backupPath ? `<p style="margin-top: 0.5rem;">Backup created at: <code style="font-size: 0.875rem;">${result.backupPath}</code></p>` : ''}
         </div>
       `;
@@ -377,7 +431,8 @@ class UpdatesManager {
 
     for (const [projectId, analysis] of this.updateAnalysis.entries()) {
       const hasUpdates = analysis.changes.added.length > 0 || analysis.changes.modified.length > 0;
-      if (hasUpdates && analysis.safe) {
+      const hasSchemaUpdates = analysis.schema && analysis.schema.needsMigration;
+      if ((hasUpdates || hasSchemaUpdates) && analysis.safe) {
         projectsToUpdate.push(projectId);
       }
     }
@@ -566,6 +621,28 @@ class UpdatesManager {
 
       case 'backupCreated':
         console.log('Backup created:', data.projectPath);
+        break;
+
+      case 'schemaMigrationStarted':
+        this.showUpdateStatus(
+          `🗄️ Migrating database schema v${data.currentVersion} → v${data.targetVersion}...`,
+          'info'
+        );
+        break;
+
+      case 'schemaMigrationComplete':
+        const migrationCount = data.migrations ? data.migrations.length : 0;
+        this.showUpdateStatus(
+          `✓ Applied ${migrationCount} database migration(s)`,
+          'success'
+        );
+        break;
+
+      case 'schemaMigrationFailed':
+        this.showUpdateStatus(
+          `✗ Schema migration failed: ${data.errors ? data.errors.join(', ') : 'Unknown error'}`,
+          'error'
+        );
         break;
     }
   }
