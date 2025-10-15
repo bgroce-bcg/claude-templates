@@ -105,14 +105,49 @@ if [ -d "$TARGET_DIR/.claude" ]; then
             cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
 
             # Restore custom files to root of agents/commands (not in cadi/)
+            # Skip files that have the same name as CADI files (CADI takes precedence)
             if [ "$CUSTOM_AGENTS" -gt 0 ]; then
-                cp "$BACKUP_DIR/agents/"*.md "$TARGET_DIR/.claude/agents/" 2>/dev/null || true
-                echo -e "${GREEN}✓ Restored custom agents${NC}"
+                RESTORED_AGENTS=0
+                SKIPPED_AGENTS=0
+                for file in "$BACKUP_DIR/agents/"*.md; do
+                    [ -e "$file" ] || continue
+                    filename=$(basename "$file")
+                    # Check if a file with this name exists anywhere in the new CADI structure
+                    if find "$TARGET_DIR/.claude/agents" -type f -name "$filename" 2>/dev/null | grep -q .; then
+                        SKIPPED_AGENTS=$((SKIPPED_AGENTS + 1))
+                    else
+                        cp "$file" "$TARGET_DIR/.claude/agents/"
+                        RESTORED_AGENTS=$((RESTORED_AGENTS + 1))
+                    fi
+                done
+                if [ $RESTORED_AGENTS -gt 0 ]; then
+                    echo -e "${GREEN}✓ Restored $RESTORED_AGENTS custom agent(s)${NC}"
+                fi
+                if [ $SKIPPED_AGENTS -gt 0 ]; then
+                    echo -e "${YELLOW}  Skipped $SKIPPED_AGENTS agent(s) with same name as CADI files${NC}"
+                fi
             fi
 
             if [ "$CUSTOM_COMMANDS" -gt 0 ]; then
-                cp "$BACKUP_DIR/commands/"*.md "$TARGET_DIR/.claude/commands/" 2>/dev/null || true
-                echo -e "${GREEN}✓ Restored custom commands${NC}"
+                RESTORED_COMMANDS=0
+                SKIPPED_COMMANDS=0
+                for file in "$BACKUP_DIR/commands/"*.md; do
+                    [ -e "$file" ] || continue
+                    filename=$(basename "$file")
+                    # Check if a file with this name exists anywhere in the new CADI structure
+                    if find "$TARGET_DIR/.claude/commands" -type f -name "$filename" 2>/dev/null | grep -q .; then
+                        SKIPPED_COMMANDS=$((SKIPPED_COMMANDS + 1))
+                    else
+                        cp "$file" "$TARGET_DIR/.claude/commands/"
+                        RESTORED_COMMANDS=$((RESTORED_COMMANDS + 1))
+                    fi
+                done
+                if [ $RESTORED_COMMANDS -gt 0 ]; then
+                    echo -e "${GREEN}✓ Restored $RESTORED_COMMANDS custom command(s)${NC}"
+                fi
+                if [ $SKIPPED_COMMANDS -gt 0 ]; then
+                    echo -e "${YELLOW}  Skipped $SKIPPED_COMMANDS command(s) with same name as CADI files${NC}"
+                fi
             fi
 
             find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
@@ -242,7 +277,7 @@ DB_PATH="$TARGET_DIR/.claude/project.db"
 # Check if sqlite3 is available
 if ! command -v sqlite3 &> /dev/null; then
     echo -e "${YELLOW}Warning: sqlite3 not found. Please install sqlite3 to use database features.${NC}"
-    echo -e "${YELLOW}You can initialize the database later by running: /db-init${NC}"
+    echo -e "${YELLOW}Install sqlite3 and re-run this script to create the database.${NC}"
 else
     # Create the database with schema
     sqlite3 "$DB_PATH" << 'EOF'
@@ -279,13 +314,30 @@ CREATE TABLE IF NOT EXISTS sections (
 
 CREATE INDEX IF NOT EXISTS idx_sections_feature_status ON sections(feature_id, status);
 CREATE INDEX IF NOT EXISTS idx_sections_order ON sections(feature_id, order_index);
+
+CREATE TABLE IF NOT EXISTS context_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    file_path TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    category TEXT NOT NULL,
+    summary TEXT,
+    tags TEXT,
+    feature_id INTEGER,
+    estimated_tokens INTEGER,
+    last_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    file_modified TIMESTAMP,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_docs_category ON context_documents(category);
+CREATE INDEX IF NOT EXISTS idx_docs_feature ON context_documents(feature_id);
 EOF
 
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ Created project.db${NC}"
     else
         echo -e "${YELLOW}Warning: Failed to create project.db${NC}"
-        echo -e "${YELLOW}You can initialize it later by running: /db-init${NC}"
+        echo -e "${YELLOW}Check that sqlite3 is installed and working properly.${NC}"
     fi
 fi
 

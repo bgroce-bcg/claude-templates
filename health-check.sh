@@ -66,7 +66,7 @@ echo "Checking database..."
 
 if [ ! -f ".claude/project.db" ]; then
     echo -e "${RED}✗ project.db not found${NC}"
-    echo -e "  ${YELLOW}Run: /db-init to create database${NC}"
+    echo -e "  ${YELLOW}Database needs to be initialized${NC}"
     ERRORS=$((ERRORS + 1))
 else
     echo -e "${GREEN}✓ project.db exists${NC}"
@@ -82,7 +82,7 @@ else
             echo -e "${GREEN}✓ features table exists${NC}"
         else
             echo -e "${RED}✗ features table not found${NC}"
-            echo -e "  ${YELLOW}Run: /db-init to reinitialize database${NC}"
+            echo -e "  ${YELLOW}Database needs to be reinitialized${NC}"
             ERRORS=$((ERRORS + 1))
         fi
 
@@ -91,7 +91,7 @@ else
             echo -e "${GREEN}✓ sections table exists${NC}"
         else
             echo -e "${RED}✗ sections table not found${NC}"
-            echo -e "  ${YELLOW}Run: /db-init to reinitialize database${NC}"
+            echo -e "  ${YELLOW}Database needs to be reinitialized${NC}"
             ERRORS=$((ERRORS + 1))
         fi
 
@@ -126,7 +126,7 @@ else
             echo -e "${GREEN}✓ Database integrity check passed${NC}"
         else
             echo -e "${RED}✗ Database integrity check failed: $INTEGRITY${NC}"
-            echo -e "  ${YELLOW}You may need to run: /db-init to recreate database${NC}"
+            echo -e "  ${YELLOW}Database may need to be recreated${NC}"
             ERRORS=$((ERRORS + 1))
         fi
     fi
@@ -142,7 +142,6 @@ COMMANDS=(
     "build.md"
     "complete-plan.md"
     "plan-status.md"
-    "db-init.md"
     "test.md"
     "lint.md"
     "commit.md"
@@ -150,7 +149,8 @@ COMMANDS=(
 
 MISSING_COMMANDS=0
 for cmd in "${COMMANDS[@]}"; do
-    if [ -f ".claude/commands/$cmd" ]; then
+    # Search recursively in .claude/commands directory
+    if find ".claude/commands" -type f -name "$cmd" 2>/dev/null | grep -q .; then
         echo -e "${GREEN}✓ $cmd${NC}"
     else
         echo -e "${RED}✗ $cmd not found${NC}"
@@ -173,7 +173,8 @@ AGENTS=(
 
 MISSING_AGENTS=0
 for agent in "${AGENTS[@]}"; do
-    if [ -f ".claude/agents/$agent" ]; then
+    # Search recursively in .claude/agents directory
+    if find ".claude/agents" -type f -name "$agent" 2>/dev/null | grep -q .; then
         echo -e "${GREEN}✓ $agent${NC}"
     else
         echo -e "${RED}✗ $agent not found${NC}"
