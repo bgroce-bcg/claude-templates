@@ -24,6 +24,7 @@ class ProjectMonitor extends EventEmitter {
     this.db = null;
     this.watcher = null;
     this.lastStats = null;
+    this.pollInterval = null;
   }
 
   /**
@@ -86,7 +87,39 @@ class ProjectMonitor extends EventEmitter {
     // Get initial stats
     this.lastStats = this.getStats();
 
+    // Set up periodic polling to catch database changes
+    // even if file system events don't fire
+    this.pollInterval = setInterval(() => {
+      this.checkForChanges();
+    }, 3000); // Poll every 3 seconds
+
     this.emit('initialized', { projectId: this.id, name: this.name });
+  }
+
+  /**
+   * Periodically check for database changes
+   */
+  checkForChanges() {
+    if (!this.db) return;
+
+    try {
+      // Reopen database to get fresh data
+      this.reopenDatabase();
+
+      const newStats = this.getStats();
+      if (JSON.stringify(newStats) !== JSON.stringify(this.lastStats)) {
+        this.emit('statsChanged', {
+          projectId: this.id,
+          projectName: this.name,
+          oldStats: this.lastStats,
+          newStats: newStats,
+          timestamp: new Date().toISOString()
+        });
+        this.lastStats = newStats;
+      }
+    } catch (error) {
+      console.error(`Error checking for changes in ${this.id}:`, error.message);
+    }
   }
 
   /**
@@ -363,6 +396,12 @@ class ProjectMonitor extends EventEmitter {
    * Close the monitor
    */
   async close() {
+    // Stop polling
+    if (this.pollInterval) {
+      clearInterval(this.pollInterval);
+      this.pollInterval = null;
+    }
+
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;
