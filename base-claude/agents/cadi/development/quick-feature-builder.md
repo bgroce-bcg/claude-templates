@@ -22,74 +22,24 @@ You are an expert Quick Feature Builder that implements simple features efficien
 
 ## Workflow
 
-### Step 1: Understand Requirements
-- Read **feature_description** carefully
-- Break down into concrete tasks
-- Identify what needs to be built:
-  - Frontend components?
-  - API endpoints?
-  - Data models?
-  - Utilities/helpers?
-- If requirements are unclear, ask user for clarification
+### Step 1: Prime Context
+SEQUENTIALLY:
+1. `/prime-backend`
+2. `/prime-frontend`
+3. Read **context_hint** if provided
 
-### Step 2: Load Context
-Run these commands SEQUENTIALLY (wait for each to complete):
-- `/prime-backend` - Load backend patterns and architecture
-- `/prime-frontend` - Load frontend components and styles
+### Step 2: Implement
+- Build what's in **feature_description**
+- Follow patterns from primed context
+- Reuse components/utilities before creating new
 
-If **context_hint** provided, also read those specific files/directories.
+### Step 3: Test
+- `/lint --fix`
+- `/test`
+- Fix failures
 
-### Step 3: Plan Implementation
-Based on loaded context:
-- Identify which files need modification
-- Determine if new files needed
-- Note which existing components/patterns to reuse
-- Identify test files to create
-
-### Step 4: Implement Feature
-
-**For Frontend Features:**
-- Check for reusable components first
-- If creating new component, use `component-builder` agent:
-  - Provide **component_name**, **component_type**, **props_description**
-- Follow frontend doc patterns from docs/frontend/
-- Include proper TypeScript types
-- Add accessibility attributes
-- Include error handling
-
-**For Backend Features:**
-- Follow RESTful conventions
-- Add proper validation
-- Include error handling
-- Follow existing patterns (controllers, services, etc.)
-- Add proper types/interfaces
-
-**For Utilities:**
-- Make functions pure when possible
-- Add JSDoc/PHPDoc comments
-- Include input validation
-- Handle edge cases
-
-### Step 5: Generate Tests
-Use `test-builder` agent to create tests:
-- Provide **target_file** (file to test)
-- Provide **test_type** ("unit", "integration", or "e2e")
-- Cover happy path, edge cases, and errors
-
-### Step 6: Run Quality Checks
-1. Run `/lint --fix` to ensure code quality
-2. Run `/test` to verify implementation
-3. Fix any issues found before proceeding
-
-### Step 7: Code Review
-Use `code-reviewer` agent:
-- Provide **target_files** (list of modified files)
-- Review findings
-- Fix critical issues
-- Note improvements for future
-
-### Step 8: Generate Report
-See Report section below.
+### Step 4: Report
+See Report section.
 
 ## Decision Making
 
@@ -156,6 +106,18 @@ Provide a concise completion report:
 ## Error Handling
 
 **If priming fails:**
+- Log error:
+  ```sql
+  INSERT INTO error_log (
+      severity, error_type, error_message, agent_name,
+      context, created_at
+  ) VALUES (
+      'error', 'priming_failed',
+      'Failed to prime context: [command name]',
+      'quick-feature-builder', '{"step": "Step 2", "command": "[command]"}',
+      CURRENT_TIMESTAMP
+  );
+  ```
 - Report which command failed
 - Ask user to check docs/ structure
 

@@ -10,37 +10,39 @@ Execute the Workflow in order
 `FEATURE`: $ARGUMENTS
 
 ## Workflow
-- If no `FEATURE` is provided, stop immediately and ask the user to give a feature name.
-- Learning: If not currently primed, run commands /prime-backend and /prime-frontend. Wait for the completion of priming before continuing.
-- Ask the user for a description of the of the feature that they want to build. Wait for input.
-- think harder about what the user is trying to do with this feature.
-- If you have clarifying questions that would determine the logic of the feature, then ask the user those questions. Don't ask the user too many questions at one time, try to figure out what the user wants.
-- Think harder about the answers the user giveswrite a PLANNING.md document in the output format listed under the `Format` section. This document should be created in docs/plans/`FEATURE`. You will need to create the needed directories.
+- If no `FEATURE`: ask for it
+- If not primed: run `/prime-backend` then `/prime-frontend` (wait for each)
+- Ask user for feature description
+- Ask clarifying questions about logic/requirements (keep brief)
+- Write concise PLANNING.md in docs/plans/`FEATURE` (create directories if needed)
+
+## Planning Guidelines
+**CRITICAL - Keep it minimal:**
+- Summary: 2-3 sentences max
+- Requirements: Only what's necessary to build, no fluff
+- User Stories: Only if they clarify the feature
+- Skip sections that don't add value
+- Focus on WHAT to build, not HOW (that's for implementation)
 
 ## Format
-The PLANNING.md should be structured in this way:
 ```
 # PLANNING
 
 ## Summary
-- Brief description of the feature.
-- Problem it solves or user need it addresses.
-- Key goals or success criteria.
-
-## Context
-- Relevant backend, frontend, or business context.
-- Dependencies on other features or systems.
-
-## User Stories
-- Clear user stories (e.g., As a user, I want to… so that…)
-- Any important user flows or scenarios.
+{2-3 sentence description of what this feature does and why}
 
 ## Requirements
-- Functional requirements: specific behaviors, inputs/outputs, rules.
-- Non-functional requirements: performance, security, accessibility, scalability, etc.
-- Error states and fallback behaviors.
+- {Bullet list of specific, concrete requirements}
+- {Focus on functionality, not implementation details}
+- {Include error states only if non-obvious}
 
-## UI / UX Details
-- Descriptions of key interactions.
-- Navigation changes if applicable
+## UI / UX (if applicable)
+- {Key user interactions}
+- {Navigation changes}
+
+## Notes
+- {Dependencies on other features/systems}
+- {Any constraints or considerations}
 ```
+
+**Keep it minimal.** Include only what's needed to understand and build the feature.

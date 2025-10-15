@@ -11,74 +11,74 @@ FEATURE: $ARGUMENTS
 PATH_TO_PLAN: docs/plans/`FEATURE`
 
 ## Instructions
-- IMPORTANT: It is ok to have 1 section if the feature is small enough.
-- Don't overcomlicate the plan with more sections if it is not necessary.
+**CRITICAL - Keep sections minimal:**
+- 1 section is often enough for simple features
+- Only create multiple sections if feature is truly complex
+- Each section must be independently buildable and testable
+- Sections should be 1-3 objectives max
+- If you find yourself with 5+ sections, you're over-planning
+- Don't create sections like "setup", "cleanup", "documentation" - those are part of implementation
 
 ## Workflow
 
-### Step 1: Validate Inputs
-- If no FEATURE provided, STOP immediately and ask the user to provide it
-- Check if `.claude/project.db` exists, if not run `/db-init` first
-- Look for `PATH_TO_PLAN`/PLANNING.md - If it does not exist, stop immediately and ask the user to create PLANNING.md at the `PATH_TO_PLAN`
+### Step 1: Validate
+- If no FEATURE: ask for it
+- Check `.claude/project.db` exists (if not: `/db-init`)
+- Check `PATH_TO_PLAN`/PLANNING.md exists (if not: ask user to create it)
 
-### Step 2: Read and Analyze PLANNING.md
-- Read PLANNING.md thoroughly
-- Think hard about how to break the plan into smaller "Plan Sections" that can be built and verified
-- Sections must be small, precise, executable sections of the overall plan
-- Each section should have:
-  - Clear name (lowercase, dashes, no spaces)
-  - Brief description/overview
-  - List of objectives (what needs to be built)
-  - Verification criteria (how to know it's done)
-  - Optional: dependencies, time estimates
+### Step 2: Read PLANNING.md
+- Read PLANNING.md
+- Break into minimal sections (prefer 1-3 total)
+- Each section: name (kebab-case), description (1 sentence), objectives (1-3 items as JSON array), verification_criteria (JSON array)
+- **Good section**: "user-authentication" with objectives: ["Add login form", "Create auth middleware", "Add session management"]
+- **Bad section**: "setup-project-structure" (this is overhead, not a feature)
+- **Bad pattern**: Breaking simple feature into 5+ micro-sections
 
-### Step 3: Insert Feature into Database
+### Step 3: Insert Feature
 ```sql
 INSERT INTO features (name, planning_doc_path, summary, status, priority)
 VALUES (?, ?, ?, 'ready', 0);
 ```
-- Extract summary from PLANNING.md
-- Set status to 'ready'
-- Get the feature_id from the insert
+Verify: `SELECT id FROM features WHERE name = ?;` (if failed, log error and stop)
 
-### Step 4: Collect Section Information
-For each section identified, gather:
-- **name**: Short kebab-case name (e.g., "create-data-model")
-- **description**: Brief overview of what this section does
-- **objectives**: JSON array of objectives (e.g., `["Build data structure", "Create intake form"]`)
-- **verification_criteria**: JSON array of completion checks (e.g., `["Form creates record", "Tests pass"]`)
-- **order_index**: Sequential number (1, 2, 3...)
-- **depends_on**: ID of section that must complete first (optional)
-- **estimated_hours**: Time estimate (optional)
-
-### Step 5: Insert Sections into Database
+### Step 4: Insert Sections
 For each section:
 ```sql
-INSERT INTO sections (
-    feature_id,
-    name,
-    description,
-    objectives,
-    verification_criteria,
-    order_index,
-    depends_on,
-    estimated_hours,
-    status
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending');
+INSERT INTO sections (feature_id, name, description, objectives, verification_criteria,
+    order_index, depends_on, estimated_hours, status)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending');
 ```
+Verify each: `SELECT id FROM sections WHERE feature_id = ? AND order_index = ?;`
 
-### Step 6: Optional - Create PROGRESS.md for Visual Reference
-If user wants markdown file for easy viewing:
-- Create `PATH_TO_PLAN`/PROGRESS.md
-- Format with checkboxes for each section
-- Note: This is optional - database is source of truth
+### Step 5: Report
+Run `/plan-status FEATURE` to show the plan. 
 
-### Step 7: Verify and Report
-- Query database to confirm sections were created
-- Run `/plan-status FEATURE` to show the plan
-- Report number of sections created 
+## Examples
+
+### Example 1: Simple Feature (1 Section)
+**Feature**: Add email notifications
+**Section**: "email-notifications"
+- Objectives: ["Create email service", "Add notification triggers", "Design email templates"]
+- Verification: ["Users receive emails on key events", "Tests pass"]
+
+### Example 2: Medium Feature (2 Sections)
+**Feature**: User profile management
+**Section 1**: "profile-backend"
+- Objectives: ["Create profile API endpoints", "Add profile validation", "Create profile model"]
+**Section 2**: "profile-frontend"
+- Objectives: ["Build profile edit form", "Add profile display page", "Add image upload"]
+
+### Example 3: Complex Feature (3-4 Sections Max)
+**Feature**: Multi-tenant system
+**Section 1**: "tenant-data-model"
+- Objectives: ["Create tenant schema", "Add tenant isolation middleware", "Migrate existing data"]
+**Section 2**: "tenant-ui"
+- Objectives: ["Add tenant selector", "Update navigation", "Add tenant settings page"]
+**Section 3**: "tenant-permissions"
+- Objectives: ["Create permission system", "Add role-based access", "Update auth checks"]
+
+**DON'T DO**: 10 micro-sections like "setup-database", "create-migrations", "write-tests", "add-documentation", etc.
 
 ## Report
-Plan created with the following sections:
-- Section 1 Short Description
-- Section 2 Short Description
+Plan created with {count} section(s):
+- {List section names}

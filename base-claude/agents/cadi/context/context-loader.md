@@ -66,6 +66,19 @@ For each file that needs indexing:
    (file_path, title, category, summary, tags, feature_id, estimated_tokens, file_modified, last_indexed)
    VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
    ```
+   **Verify Insert:**
+   If insert fails, log error:
+   ```sql
+   INSERT INTO error_log (
+       severity, error_type, error_message, agent_name,
+       context, created_at
+   ) VALUES (
+       'error', 'database_insert_failed',
+       'Failed to index documentation file: [file_path]',
+       'context-loader', '{"operation": "indexing", "file": "[file_path]"}',
+       CURRENT_TIMESTAMP
+   );
+   ```
 6. **Link to features**: If feature field present, look up feature_id from features table
 
 ### Step 3: Query Documentation
@@ -175,7 +188,19 @@ Provide summary of operation:
 - Include in search results anyway
 
 **File read errors:**
-- Skip file and log error
+- Skip file and continue processing
+- Log error to database:
+  ```sql
+  INSERT INTO error_log (
+      severity, error_type, error_message, agent_name,
+      context, created_at
+  ) VALUES (
+      'warning', 'file_read_failed',
+      'Failed to read documentation file: [file_path]',
+      'context-loader', '{"operation": "indexing", "file": "[file_path]"}',
+      CURRENT_TIMESTAMP
+  );
+  ```
 - Don't update database entry
 - Report error in final summary
 
