@@ -2,7 +2,31 @@
 
 This document shows how agents and commands work together in your Claude templates.
 
-## Core Development Workflow
+## Core Development Workflows
+
+### Quick Feature Workflow (Simple Features)
+
+**Use for:** Single components, utilities, bug fixes, simple endpoints
+
+```
+/quick-feature [description]
+    ↓
+quick-feature-builder agent
+    ├─→ /prime-backend
+    ├─→ /prime-frontend
+    ├─→ Implement feature
+    ├─→ component-builder agent (if UI needed)
+    ├─→ test-builder agent (generate tests)
+    ├─→ /lint --fix
+    ├─→ /test
+    └─→ code-reviewer agent
+    ↓
+/commit (optional)
+```
+
+### Full Planning Workflow (Complex Features)
+
+**Use for:** Multi-section features, architectural changes, complex integrations
 
 ```
 /start-plan [feature]
@@ -119,6 +143,15 @@ code-reviewer agent (verify improvements)
 
 ## Key Integration Points
 
+### quick-feature-builder uses:
+- `/prime-backend` - Load backend context
+- `/prime-frontend` - Load frontend context
+- `component-builder` - Create React components
+- `test-builder` - Generate tests
+- `/lint --fix` - Fix code quality
+- `/test` - Verify implementation
+- `code-reviewer` - Review changes
+
 ### plan-section-builder uses:
 - `/prime-backend` - Load backend context
 - `/prime-frontend` - Load frontend context
@@ -127,6 +160,10 @@ code-reviewer agent (verify improvements)
 - `/lint --fix` - Fix code quality
 - `/test` - Verify implementation
 - `code-reviewer` - Review changes
+
+### /quick-feature uses:
+- `quick-feature-builder` - Complete implementation
+- `/commit` - Optional commit after completion
 
 ### /build uses:
 - `plan-section-builder` - Build each section
