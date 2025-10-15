@@ -126,6 +126,28 @@ class MonitorServer {
       res.json({ documents });
     });
 
+    // Get errors for a project
+    this.app.get('/api/projects/:id/errors', (req, res) => {
+      const monitor = this.projects.get(req.params.id);
+
+      if (!monitor) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const options = {
+        limit: parseInt(req.query.limit) || 50,
+        severity: req.query.severity || null,
+        resolved: req.query.resolved !== undefined ? req.query.resolved === 'true' : null,
+        agentName: req.query.agent || null,
+        featureId: req.query.feature ? parseInt(req.query.feature) : null
+      };
+
+      const errors = monitor.getErrors(options);
+      const stats = monitor.getErrorStats();
+
+      res.json({ errors, stats });
+    });
+
     // Get aggregated stats across all projects
     this.app.get('/api/stats', (req, res) => {
       const stats = {

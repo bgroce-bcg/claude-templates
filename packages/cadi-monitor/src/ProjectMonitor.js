@@ -308,6 +308,149 @@ class ProjectMonitor extends EventEmitter {
   }
 
   /**
+   * Get error log entries
+   */
+  getErrors(options = {}) {
+    if (!this.db) return [];
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='error_log'"
+      ).get();
+
+      if (!tableExists) {
+        return [];
+      }
+
+      const {
+        limit = 50,
+        severity = null,
+        resolved = null,
+        agentName = null,
+        featureId = null
+      } = options;
+
+      let query = `
+        SELECT
+          e.id,
+          e.timestamp,
+          e.agent_name,
+          e.command_name,
+          e.feature_id,
+          e.section_id,
+          e.error_type,
+          e.error_message,
+          e.error_context,
+          e.resolution,
+          e.severity,
+          e.resolved,
+          f.name as feature_name,
+          s.name as section_name
+        FROM error_log e
+        LEFT JOIN features f ON e.feature_id = f.id
+        LEFT JOIN sections s ON e.section_id = s.id
+        WHERE 1=1
+      `;
+
+      const params = [];
+
+      if (severity) {
+        query += ' AND e.severity = ?';
+        params.push(severity);
+      }
+
+      if (resolved !== null) {
+        query += ' AND e.resolved = ?';
+        params.push(resolved ? 1 : 0);
+      }
+
+      if (agentName) {
+        query += ' AND e.agent_name = ?';
+        params.push(agentName);
+      }
+
+      if (featureId) {
+        query += ' AND e.feature_id = ?';
+        params.push(featureId);
+      }
+
+      query += ' ORDER BY e.timestamp DESC LIMIT ?';
+      params.push(limit);
+
+      return this.db.prepare(query).all(...params);
+    } catch (error) {
+      console.error(`Error getting errors for ${this.id}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get error statistics
+   */
+  getErrorStats() {
+    if (!this.db) return null;
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='error_log'"
+      ).get();
+
+      if (!tableExists) {
+        return {
+          total: 0,
+          bySeverity: {},
+          byAgent: {},
+          resolved: 0,
+          unresolved: 0
+        };
+      }
+
+      // Total errors
+      const total = this.db.prepare('SELECT COUNT(*) as count FROM error_log').get();
+
+      // By severity
+      const bySeverity = this.db.prepare(`
+        SELECT severity, COUNT(*) as count
+        FROM error_log
+        GROUP BY severity
+      `).all();
+
+      // By agent
+      const byAgent = this.db.prepare(`
+        SELECT agent_name, COUNT(*) as count
+        FROM error_log
+        GROUP BY agent_name
+        ORDER BY count DESC
+        LIMIT 10
+      `).all();
+
+      // Resolved vs unresolved
+      const resolvedCount = this.db.prepare(
+        'SELECT COUNT(*) as count FROM error_log WHERE resolved = 1'
+      ).get();
+
+      return {
+        total: total.count,
+        bySeverity: bySeverity.reduce((acc, row) => {
+          acc[row.severity] = row.count;
+          return acc;
+        }, {}),
+        byAgent: byAgent.reduce((acc, row) => {
+          acc[row.agent_name] = row.count;
+          return acc;
+        }, {}),
+        resolved: resolvedCount.count,
+        unresolved: total.count - resolvedCount.count
+      };
+    } catch (error) {
+      console.error(`Error getting error stats for ${this.id}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Get context documents
    */
   getContextDocuments() {

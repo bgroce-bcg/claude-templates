@@ -50,6 +50,7 @@
                     <button class="tab-btn active" data-view="overview">Overview</button>
                     <button class="tab-btn" data-view="features">Features</button>
                     <button class="tab-btn" data-view="context">Context</button>
+                    <button class="tab-btn" data-view="errors">Errors</button>
                     <button class="tab-btn" data-view="activity">Activity</button>
                 </div>
 
@@ -89,6 +90,37 @@
 
                     <div class="context-container" id="contextContainer">
                         <!-- Context docs will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Errors View -->
+                <div class="view" id="errorsView">
+                    <div class="view-header">
+                        <h2>Error Log</h2>
+                        <div class="view-subtitle" id="errorsProjectName"></div>
+                    </div>
+
+                    <div class="error-stats" id="errorStats">
+                        <!-- Error stats will be loaded here -->
+                    </div>
+
+                    <div class="error-filters">
+                        <select id="severityFilter" class="filter-select">
+                            <option value="">All Severities</option>
+                            <option value="critical">Critical</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                        <select id="resolvedFilter" class="filter-select">
+                            <option value="">All Errors</option>
+                            <option value="false">Unresolved</option>
+                            <option value="true">Resolved</option>
+                        </select>
+                    </div>
+
+                    <div class="errors-container" id="errorsContainer">
+                        <!-- Error log entries will be loaded here -->
                     </div>
                 </div>
 

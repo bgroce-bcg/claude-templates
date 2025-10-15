@@ -331,6 +331,30 @@ CREATE TABLE IF NOT EXISTS context_documents (
 
 CREATE INDEX IF NOT EXISTS idx_docs_category ON context_documents(category);
 CREATE INDEX IF NOT EXISTS idx_docs_feature ON context_documents(feature_id);
+
+CREATE TABLE IF NOT EXISTS error_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    agent_name TEXT NOT NULL,
+    command_name TEXT,
+    feature_id INTEGER,
+    section_id INTEGER,
+    error_type TEXT NOT NULL,
+    error_message TEXT NOT NULL,
+    error_context TEXT,
+    resolution TEXT,
+    severity TEXT CHECK(severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
+    resolved BOOLEAN DEFAULT 0,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_timestamp ON error_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_error_agent ON error_log(agent_name);
+CREATE INDEX IF NOT EXISTS idx_error_severity ON error_log(severity);
+CREATE INDEX IF NOT EXISTS idx_error_resolved ON error_log(resolved);
+CREATE INDEX IF NOT EXISTS idx_error_feature ON error_log(feature_id);
+CREATE INDEX IF NOT EXISTS idx_error_section ON error_log(section_id);
 EOF
 
     if [ $? -eq 0 ]; then
