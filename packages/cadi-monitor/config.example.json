@@ -1,0 +1,22 @@
+{
+  "port": 3030,
+  "host": "localhost",
+  "projects": [
+    {
+      "id": "example-project",
+      "name": "Example Project",
+      "path": "/path/to/your/project",
+      "color": "#3178C6",
+      "enabled": true
+    }
+  ],
+  "autoDiscoverProjects": false,
+  "scanPaths": [
+    "/path/to/projects/directory"
+  ],
+  "ui": {
+    "theme": "dark",
+    "defaultView": "overview",
+    "refreshInterval": 5000
+  }
+}

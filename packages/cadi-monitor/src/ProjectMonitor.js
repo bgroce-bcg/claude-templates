@@ -1,0 +1,380 @@
+const Database = require('better-sqlite3');
+const chokidar = require('chokidar');
+const fs = require('fs');
+const path = require('path');
+const { EventEmitter } = require('events');
+
+/**
+ * Monitors a single CADI project
+ * - Reads from project.db (read-only)
+ * - Watches .claude/, docs/plans/, docs/features/ for changes
+ * - Emits events when things change
+ */
+class ProjectMonitor extends EventEmitter {
+  constructor(projectConfig) {
+    super();
+
+    this.id = projectConfig.id;
+    this.name = projectConfig.name;
+    this.path = projectConfig.path;
+    this.color = projectConfig.color || '#3178C6';
+    this.enabled = projectConfig.enabled !== false;
+
+    this.dbPath = path.join(this.path, '.claude/project.db');
+    this.db = null;
+    this.watcher = null;
+    this.lastStats = null;
+  }
+
+  /**
+   * Initialize the monitor
+   */
+  async init() {
+    if (!this.enabled) {
+      return;
+    }
+
+    // Check if project directory exists
+    if (!fs.existsSync(this.path)) {
+      throw new Error(`Project path does not exist: ${this.path}`);
+    }
+
+    // Check if .claude/project.db exists
+    if (!fs.existsSync(this.dbPath)) {
+      throw new Error(`Database not found: ${this.dbPath}`);
+    }
+
+    // Open database in read-only mode
+    try {
+      this.db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+
+      // Verify database has expected tables
+      const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+      const tableNames = tables.map(t => t.name);
+
+      if (!tableNames.includes('features') || !tableNames.includes('sections')) {
+        throw new Error(`Database missing required tables: ${this.dbPath}`);
+      }
+    } catch (error) {
+      throw new Error(`Failed to open database: ${error.message}`);
+    }
+
+    // Set up file watchers
+    const watchPaths = [
+      path.join(this.path, '.claude'),
+      path.join(this.path, 'docs/plans'),
+      path.join(this.path, 'docs/features')
+    ].filter(p => fs.existsSync(p));
+
+    if (watchPaths.length > 0) {
+      this.watcher = chokidar.watch(watchPaths, {
+        ignored: /(^|[\/\\])\../, // ignore dotfiles
+        persistent: true,
+        ignoreInitial: true,
+        awaitWriteFinish: {
+          stabilityThreshold: 500,
+          pollInterval: 100
+        }
+      });
+
+      this.watcher
+        .on('change', (filepath) => this.onFileChange('change', filepath))
+        .on('add', (filepath) => this.onFileChange('add', filepath))
+        .on('unlink', (filepath) => this.onFileChange('unlink', filepath));
+    }
+
+    // Get initial stats
+    this.lastStats = this.getStats();
+
+    this.emit('initialized', { projectId: this.id, name: this.name });
+  }
+
+  /**
+   * Handle file changes
+   */
+  onFileChange(eventType, filepath) {
+    const relativePath = path.relative(this.path, filepath);
+
+    this.emit('fileChange', {
+      projectId: this.id,
+      projectName: this.name,
+      eventType,
+      file: relativePath,
+      timestamp: new Date().toISOString()
+    });
+
+    // Check if stats changed (e.g., database was updated)
+    if (filepath.endsWith('project.db')) {
+      // Close and reopen database to get fresh data
+      this.reopenDatabase();
+
+      const newStats = this.getStats();
+      if (JSON.stringify(newStats) !== JSON.stringify(this.lastStats)) {
+        this.emit('statsChanged', {
+          projectId: this.id,
+          projectName: this.name,
+          oldStats: this.lastStats,
+          newStats: newStats,
+          timestamp: new Date().toISOString()
+        });
+        this.lastStats = newStats;
+      }
+    }
+  }
+
+  /**
+   * Reopen database connection (to get fresh data after changes)
+   */
+  reopenDatabase() {
+    if (this.db) {
+      try {
+        this.db.close();
+      } catch (error) {
+        // Ignore errors on close
+      }
+    }
+
+    try {
+      this.db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+    } catch (error) {
+      console.error(`Failed to reopen database for ${this.id}:`, error.message);
+    }
+  }
+
+  /**
+   * Get overall project statistics
+   */
+  getStats() {
+    if (!this.db) return null;
+
+    try {
+      // Feature counts by status
+      const featureStats = this.db.prepare(`
+        SELECT
+          status,
+          COUNT(*) as count
+        FROM features
+        GROUP BY status
+      `).all();
+
+      // Section counts by status
+      const sectionStats = this.db.prepare(`
+        SELECT
+          status,
+          COUNT(*) as count
+        FROM sections
+        GROUP BY status
+      `).all();
+
+      // Total features
+      const totalFeatures = this.db.prepare('SELECT COUNT(*) as count FROM features').get();
+
+      // Total sections
+      const totalSections = this.db.prepare('SELECT COUNT(*) as count FROM sections').get();
+
+      // Context documents count (if table exists)
+      let contextDocsCount = 0;
+      try {
+        const docsCount = this.db.prepare('SELECT COUNT(*) as count FROM context_documents').get();
+        contextDocsCount = docsCount.count;
+      } catch (error) {
+        // Table might not exist in older databases
+      }
+
+      return {
+        features: {
+          total: totalFeatures.count,
+          byStatus: featureStats.reduce((acc, row) => {
+            acc[row.status] = row.count;
+            return acc;
+          }, {})
+        },
+        sections: {
+          total: totalSections.count,
+          byStatus: sectionStats.reduce((acc, row) => {
+            acc[row.status] = row.count;
+            return acc;
+          }, {})
+        },
+        contextDocs: contextDocsCount,
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      console.error(`Error getting stats for ${this.id}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get all features
+   */
+  getFeatures() {
+    if (!this.db) return [];
+
+    try {
+      return this.db.prepare(`
+        SELECT
+          id,
+          name,
+          summary,
+          status,
+          priority,
+          created_at,
+          started_at,
+          completed_at
+        FROM features
+        ORDER BY priority DESC, created_at DESC
+      `).all();
+    } catch (error) {
+      console.error(`Error getting features for ${this.id}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get sections for a feature
+   */
+  getSections(featureId) {
+    if (!this.db) return [];
+
+    try {
+      return this.db.prepare(`
+        SELECT
+          id,
+          feature_id,
+          name,
+          description,
+          objectives,
+          verification_criteria,
+          order_index,
+          status,
+          depends_on,
+          estimated_hours,
+          actual_hours,
+          started_at,
+          completed_at,
+          notes
+        FROM sections
+        WHERE feature_id = ?
+        ORDER BY order_index ASC
+      `).all(featureId);
+    } catch (error) {
+      console.error(`Error getting sections for feature ${featureId} in ${this.id}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get recent activity (requires activity tracking table - future enhancement)
+   */
+  getRecentActivity(limit = 10) {
+    // This would require an activity_log table in the database
+    // For now, return empty array
+    // TODO: Implement when activity logging is added to CADI
+    return [];
+  }
+
+  /**
+   * Get context documents
+   */
+  getContextDocuments() {
+    if (!this.db) return [];
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='context_documents'"
+      ).get();
+
+      if (!tableExists) {
+        return [];
+      }
+
+      return this.db.prepare(`
+        SELECT
+          id,
+          file_path,
+          title,
+          category,
+          summary,
+          tags,
+          feature_id,
+          estimated_tokens,
+          last_indexed,
+          file_modified
+        FROM context_documents
+        ORDER BY last_indexed DESC
+      `).all();
+    } catch (error) {
+      console.error(`Error getting context documents for ${this.id}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get health status
+   */
+  getHealth() {
+    const health = {
+      projectId: this.id,
+      name: this.name,
+      path: this.path,
+      status: 'healthy',
+      issues: []
+    };
+
+    // Check if directory exists
+    if (!fs.existsSync(this.path)) {
+      health.status = 'error';
+      health.issues.push('Project directory not found');
+      return health;
+    }
+
+    // Check if database exists
+    if (!fs.existsSync(this.dbPath)) {
+      health.status = 'error';
+      health.issues.push('Database not found');
+      return health;
+    }
+
+    // Check if database is readable
+    if (!this.db) {
+      health.status = 'error';
+      health.issues.push('Database not connected');
+      return health;
+    }
+
+    // Check database integrity
+    try {
+      const integrityCheck = this.db.prepare('PRAGMA integrity_check').get();
+      if (integrityCheck.integrity_check !== 'ok') {
+        health.status = 'warning';
+        health.issues.push(`Database integrity: ${integrityCheck.integrity_check}`);
+      }
+    } catch (error) {
+      health.status = 'warning';
+      health.issues.push(`Database integrity check failed: ${error.message}`);
+    }
+
+    return health;
+  }
+
+  /**
+   * Close the monitor
+   */
+  async close() {
+    if (this.watcher) {
+      await this.watcher.close();
+      this.watcher = null;
+    }
+
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+
+    this.emit('closed', { projectId: this.id });
+  }
+}
+
+module.exports = ProjectMonitor;
