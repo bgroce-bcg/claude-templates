@@ -150,6 +150,19 @@ class CADIMonitor {
         this.hideAddProjectModal();
       }
     });
+
+    // Error filters
+    document.getElementById('severityFilter').addEventListener('change', () => {
+      if (this.selectedProject && this.currentView === 'errors') {
+        this.loadErrors(this.selectedProject);
+      }
+    });
+
+    document.getElementById('resolvedFilter').addEventListener('change', () => {
+      if (this.selectedProject && this.currentView === 'errors') {
+        this.loadErrors(this.selectedProject);
+      }
+    });
   }
 
   /**
@@ -244,6 +257,7 @@ class CADIMonitor {
     // Update view subtitles
     document.getElementById('featuresProjectName').textContent = project.name;
     document.getElementById('contextProjectName').textContent = project.name;
+    document.getElementById('errorsProjectName').textContent = project.name;
 
     // Load features
     if (this.currentView === 'features') {
@@ -253,6 +267,11 @@ class CADIMonitor {
     // Load context
     if (this.currentView === 'context') {
       await this.loadContext(projectId);
+    }
+
+    // Load errors
+    if (this.currentView === 'errors') {
+      await this.loadErrors(projectId);
     }
   }
 
@@ -420,6 +439,117 @@ class CADIMonitor {
   }
 
   /**
+   * Load errors for a project
+   */
+  async loadErrors(projectId) {
+    try {
+      const severityFilter = document.getElementById('severityFilter').value;
+      const resolvedFilter = document.getElementById('resolvedFilter').value;
+
+      let url = `/api/projects/${projectId}/errors?`;
+      if (severityFilter) url += `severity=${severityFilter}&`;
+      if (resolvedFilter) url += `resolved=${resolvedFilter}&`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      this.renderErrors(data.errors, data.stats);
+    } catch (error) {
+      console.error('Failed to load errors:', error);
+    }
+  }
+
+  /**
+   * Render errors
+   */
+  renderErrors(errors, stats) {
+    // Render error stats
+    const statsContainer = document.getElementById('errorStats');
+    statsContainer.innerHTML = `
+      <div class="error-stat-card">
+        <div class="error-stat-value">${stats.total}</div>
+        <div class="error-stat-label">Total Errors</div>
+      </div>
+      <div class="error-stat-card">
+        <div class="error-stat-value">${stats.unresolved}</div>
+        <div class="error-stat-label">Unresolved</div>
+      </div>
+      <div class="error-stat-card">
+        <div class="error-stat-value">${stats.resolved}</div>
+        <div class="error-stat-label">Resolved</div>
+      </div>
+      <div class="error-stat-card">
+        <div class="error-stat-value">${stats.bySeverity.critical || 0}</div>
+        <div class="error-stat-label">Critical</div>
+      </div>
+      <div class="error-stat-card">
+        <div class="error-stat-value">${stats.bySeverity.high || 0}</div>
+        <div class="error-stat-label">High</div>
+      </div>
+    `;
+
+    // Render error list
+    const container = document.getElementById('errorsContainer');
+
+    if (!errors || errors.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">✅</div>
+          <div class="empty-state-message">No errors logged</div>
+          <div class="empty-state-hint">Agents will log errors here as they encounter issues</div>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = errors.map(error => {
+      const timestamp = new Date(error.timestamp);
+      const timeStr = timestamp.toLocaleString();
+
+      return `
+        <div class="error-item severity-${error.severity} ${error.resolved ? 'resolved' : ''}">
+          <div class="error-header">
+            <div class="error-title">
+              <div class="error-type">${this.escapeHtml(error.error_type)}</div>
+              <div class="error-agent">
+                ${this.escapeHtml(error.agent_name)}
+                ${error.command_name ? ` → ${this.escapeHtml(error.command_name)}` : ''}
+              </div>
+            </div>
+            <div class="error-meta">
+              <span class="error-severity ${error.severity}">${error.severity}</span>
+              ${error.resolved ? '<span class="badge badge-completed">Resolved</span>' : ''}
+            </div>
+          </div>
+
+          <div class="error-message">${this.escapeHtml(error.error_message)}</div>
+
+          ${error.error_context ? `
+            <div class="error-context">${this.escapeHtml(error.error_context)}</div>
+          ` : ''}
+
+          ${error.resolution ? `
+            <div class="error-resolution">
+              <div class="error-resolution-label">Resolution</div>
+              ${this.escapeHtml(error.resolution)}
+            </div>
+          ` : ''}
+
+          <div class="error-footer">
+            <span>${timeStr}</span>
+            ${error.feature_name ? `
+              <a href="#" class="error-feature-link" onclick="return false;">
+                ${this.escapeHtml(error.feature_name)}
+                ${error.section_name ? ` / ${this.escapeHtml(error.section_name)}` : ''}
+              </a>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
    * Render overview
    */
   async renderOverview() {
@@ -537,6 +667,8 @@ class CADIMonitor {
       this.loadFeatures(this.selectedProject);
     } else if (viewName === 'context' && this.selectedProject) {
       this.loadContext(this.selectedProject);
+    } else if (viewName === 'errors' && this.selectedProject) {
+      this.loadErrors(this.selectedProject);
     } else if (viewName === 'activity') {
       this.renderActivityFeed();
     }
