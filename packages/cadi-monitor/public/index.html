@@ -50,10 +50,9 @@
                     <button class="tab-btn active" data-view="overview">Overview</button>
                     <button class="tab-btn" data-view="features">Features</button>
                     <button class="tab-btn" data-view="context">Context</button>
-                    <button class="tab-btn" data-view="errors">Errors</button>
+                    <button class="tab-btn" data-view="updates">Updates</button>
                     <button class="tab-btn" data-view="activity">Activity</button>
                 </div>
-
                 <!-- Overview View -->
                 <div class="view active" id="overviewView">
                     <div class="view-header">
@@ -124,6 +123,30 @@
                     </div>
                 </div>
 
+                <!-- Updates View -->
+                <div class="view" id="updatesView">
+                    <div class="view-header">
+                        <h2>System Updates</h2>
+                        <div class="view-actions">
+                            <button class="btn-secondary" id="checkAllUpdatesBtn">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right: 0.5rem;">
+                                    <path d="M13.65 2.35C12.2 0.9 10.21 0 8 0 3.58 0 0.01 3.58 0.01 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L9 7h7V0l-2.35 2.35z" fill="currentColor"/>
+                                </svg>
+                                Check for Updates
+                            </button>
+                            <button class="btn-primary" id="updateAllBtn" style="display: none;">Update All Projects</button>
+                        </div>
+                    </div>
+
+                    <div class="update-status" id="updateStatus">
+                        <!-- Update status message -->
+                    </div>
+
+                    <div class="updates-grid" id="updatesGrid">
+                        <!-- Update cards will be loaded here -->
+                    </div>
+                </div>
+
                 <!-- Activity View -->
                 <div class="view" id="activityView">
                     <div class="view-header">
@@ -136,6 +159,40 @@
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- Update Preview Modal -->
+    <div class="modal" id="updatePreviewModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 id="updateModalTitle">Update Preview</h3>
+                <button class="modal-close" id="closeUpdateModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="updatePreviewContent">
+                    <!-- Update preview will be loaded here -->
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="cancelUpdateBtn">Cancel</button>
+                    <button type="button" class="btn-primary" id="applyUpdateBtn">Apply Update</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup Manager Modal -->
+    <div class="modal" id="backupModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="backupModalTitle">Manage Backups</h3>
+                <button class="modal-close" id="closeBackupModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="backupList">
+                    <!-- Backup list will be loaded here -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Add Project Modal -->
@@ -174,6 +231,7 @@
         </div>
     </div>
 
+    <script src="/js/updates.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

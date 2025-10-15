@@ -17,6 +17,11 @@ class CADIMonitor {
     this.setupWebSocket();
     this.setupEventListeners();
     this.loadProjects();
+
+    // Initialize UpdatesManager (if available)
+    if (typeof UpdatesManager !== 'undefined') {
+      this.updatesManager = new UpdatesManager(this);
+    }
   }
 
   /**
@@ -79,6 +84,13 @@ class CADIMonitor {
         console.log('Project initialized:', data.name);
         this.addActivityItem('Project initialized', data.name, new Date().toISOString());
         this.loadProjects();
+        break;
+
+      case 'updateEvent':
+        // Forward to UpdatesManager
+        if (this.updatesManager) {
+          this.updatesManager.handleUpdateEvent(data);
+        }
         break;
 
       default:
@@ -667,10 +679,12 @@ class CADIMonitor {
       this.loadFeatures(this.selectedProject);
     } else if (viewName === 'context' && this.selectedProject) {
       this.loadContext(this.selectedProject);
-    } else if (viewName === 'errors' && this.selectedProject) {
-      this.loadErrors(this.selectedProject);
+    } else if (viewName === 'updates') {
+      // Updates view doesn't load automatically - user clicks "Check for Updates"
     } else if (viewName === 'activity') {
       this.renderActivityFeed();
+    } else if (viewName === 'errors' && this.selectedProject) {
+      this.loadErrors(this.selectedProject);
     }
   }
 
