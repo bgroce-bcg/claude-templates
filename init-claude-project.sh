@@ -102,7 +102,14 @@ if [ -d "$TARGET_DIR/.claude" ]; then
             # Install fresh CADI structure
             mkdir -p "$TARGET_DIR/.claude/agents"
             mkdir -p "$TARGET_DIR/.claude/commands"
+            mkdir -p "$TARGET_DIR/.claude/scripts"
             cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
+
+            # Copy scripts from repo root
+            if [ -d "$SCRIPT_DIR/scripts" ]; then
+                cp -r "$SCRIPT_DIR/scripts/"* "$TARGET_DIR/.claude/scripts/"
+                echo -e "${GREEN}✓ Installed documentation scripts${NC}"
+            fi
 
             # Restore custom files to root of agents/commands (not in cadi/)
             # Skip files that have the same name as CADI files (CADI takes precedence)
@@ -172,7 +179,15 @@ if [ -d "$TARGET_DIR/.claude" ]; then
             rm -rf "$TARGET_DIR/.claude/commands"
             mkdir -p "$TARGET_DIR/.claude/agents"
             mkdir -p "$TARGET_DIR/.claude/commands"
+            mkdir -p "$TARGET_DIR/.claude/scripts"
             cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
+
+            # Copy scripts from repo root
+            if [ -d "$SCRIPT_DIR/scripts" ]; then
+                cp -r "$SCRIPT_DIR/scripts/"* "$TARGET_DIR/.claude/scripts/"
+                echo -e "${GREEN}✓ Installed documentation scripts${NC}"
+            fi
+
             find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
             echo -e "${GREEN}✓ Updated .claude directory${NC}"
         else
@@ -183,6 +198,13 @@ else
     # Fresh installation
     echo -e "${BLUE}Copying Claude configuration...${NC}"
     cp -r "$BASE_CLAUDE_DIR" "$TARGET_DIR/.claude"
+
+    # Copy scripts from repo root
+    mkdir -p "$TARGET_DIR/.claude/scripts"
+    if [ -d "$SCRIPT_DIR/scripts" ]; then
+        cp -r "$SCRIPT_DIR/scripts/"* "$TARGET_DIR/.claude/scripts/"
+        echo -e "${GREEN}✓ Installed documentation scripts${NC}"
+    fi
 
     # Remove Windows Zone.Identifier files if they exist
     find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
@@ -378,9 +400,10 @@ if [ "$USE_NEXT" = true ]; then
 fi
 echo ""
 echo "Directory structure:"
-echo "  .claude/         - Claude configuration and commands"
+echo "  .claude/           - Claude configuration and commands"
+echo "  .claude/scripts/   - Documentation indexing scripts"
 echo "  .claude/project.db - Project planning database"
-echo "  docs/backend/    - Backend documentation"
-echo "  docs/frontend/   - Frontend documentation"
-echo "  docs/plans/      - Project plans"
-echo "  docs/features/   - Feature documentation"
+echo "  docs/backend/      - Backend documentation"
+echo "  docs/frontend/     - Frontend documentation"
+echo "  docs/plans/        - Project plans"
+echo "  docs/features/     - Feature documentation"

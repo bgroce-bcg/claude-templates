@@ -70,6 +70,17 @@ class UpdateManager extends EventEmitter {
         );
       }
 
+      // Analyze scripts (scripts are in repo root, not base-claude)
+      const templateScriptsDir = path.join(this.templatePath, '../scripts');
+      if (fs.existsSync(templateScriptsDir)) {
+        this.analyzeDirectory(
+          templateScriptsDir,
+          path.join(projectClaudeDir, 'scripts'),
+          'scripts',
+          analysis
+        );
+      }
+
       // Find custom files in project that aren't in template
       this.findCustomFiles(
         path.join(projectClaudeDir, 'agents'),
@@ -82,6 +93,15 @@ class UpdateManager extends EventEmitter {
         path.join(projectClaudeDir, 'commands'),
         templateCommandsDir,
         'commands',
+        analysis
+      );
+
+      // Check for custom scripts (using same templateScriptsDir from above)
+      const scriptsTemplateDir = path.join(this.templatePath, '../scripts');
+      this.findCustomFiles(
+        path.join(projectClaudeDir, 'scripts'),
+        scriptsTemplateDir,
+        'scripts',
         analysis
       );
 
@@ -126,31 +146,41 @@ class UpdateManager extends EventEmitter {
       if (entry.isDirectory()) {
         // Recurse into subdirectory
         this.analyzeDirectory(templatePath, projectPath, relPath, analysis);
-      } else if (entry.isFile() && entry.name.endsWith('.md')) {
-        // Compare files
-        if (!fs.existsSync(projectPath)) {
-          // New file
-          analysis.changes.added.push({
-            path: relPath,
-            type: 'file'
-          });
-        } else {
-          // Check if modified
-          const templateContent = fs.readFileSync(templatePath, 'utf8');
-          const projectContent = fs.readFileSync(projectPath, 'utf8');
+      } else if (entry.isFile()) {
+        // Check if this is a file we should track
+        const isMarkdown = entry.name.endsWith('.md');
+        const isScript = relativePath.startsWith('scripts') && (
+          entry.name.endsWith('.js') ||
+          entry.name.endsWith('.sh') ||
+          entry.name.endsWith('.py')
+        );
 
-          if (templateContent !== projectContent) {
-            analysis.changes.modified.push({
-              path: relPath,
-              type: 'file',
-              templateSize: templateContent.length,
-              projectSize: projectContent.length
-            });
-          } else {
-            analysis.changes.unchanged.push({
+        if (isMarkdown || isScript) {
+          // Compare files
+          if (!fs.existsSync(projectPath)) {
+            // New file
+            analysis.changes.added.push({
               path: relPath,
               type: 'file'
             });
+          } else {
+            // Check if modified
+            const templateContent = fs.readFileSync(templatePath, 'utf8');
+            const projectContent = fs.readFileSync(projectPath, 'utf8');
+
+            if (templateContent !== projectContent) {
+              analysis.changes.modified.push({
+                path: relPath,
+                type: 'file',
+                templateSize: templateContent.length,
+                projectSize: projectContent.length
+              });
+            } else {
+              analysis.changes.unchanged.push({
+                path: relPath,
+                type: 'file'
+              });
+            }
           }
         }
       }
@@ -178,13 +208,23 @@ class UpdateManager extends EventEmitter {
           relPath,
           analysis
         );
-      } else if (entry.isFile() && entry.name.endsWith('.md')) {
-        // Check if file exists in template
-        if (!fs.existsSync(templatePath)) {
-          analysis.changes.custom.push({
-            path: relPath,
-            type: 'file'
-          });
+      } else if (entry.isFile()) {
+        // Check if this is a file we should track
+        const isMarkdown = entry.name.endsWith('.md');
+        const isScript = relativePath.startsWith('scripts') && (
+          entry.name.endsWith('.js') ||
+          entry.name.endsWith('.sh') ||
+          entry.name.endsWith('.py')
+        );
+
+        if (isMarkdown || isScript) {
+          // Check if file exists in template
+          if (!fs.existsSync(templatePath)) {
+            analysis.changes.custom.push({
+              path: relPath,
+              type: 'file'
+            });
+          }
         }
       }
     }
@@ -334,7 +374,11 @@ class UpdateManager extends EventEmitter {
 
       // Add new files
       for (const item of analysis.changes.added) {
-        const templateFilePath = path.join(this.templatePath, item.path);
+        // Scripts are in repo root, not base-claude
+        const isScript = item.path.startsWith('scripts');
+        const templateFilePath = isScript
+          ? path.join(this.templatePath, '..', item.path)
+          : path.join(this.templatePath, item.path);
         const projectFilePath = path.join(projectClaudeDir, item.path);
 
         if (!dryRun) {
@@ -357,7 +401,11 @@ class UpdateManager extends EventEmitter {
 
       // Update modified files
       for (const item of analysis.changes.modified) {
-        const templateFilePath = path.join(this.templatePath, item.path);
+        // Scripts are in repo root, not base-claude
+        const isScript = item.path.startsWith('scripts');
+        const templateFilePath = isScript
+          ? path.join(this.templatePath, '..', item.path)
+          : path.join(this.templatePath, item.path);
         const projectFilePath = path.join(projectClaudeDir, item.path);
 
         if (!dryRun) {

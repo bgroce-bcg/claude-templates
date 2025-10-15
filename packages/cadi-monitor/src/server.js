@@ -594,7 +594,9 @@ class MonitorServer {
 
 // Run server if executed directly
 if (require.main === module) {
-  const server = new MonitorServer();
+  // Default template path is base-claude in repo root (two levels up from packages/cadi-monitor/src)
+  const defaultTemplatePath = path.join(__dirname, '../../../base-claude');
+  const server = new MonitorServer(null, defaultTemplatePath);
 
   server.start().catch((error) => {
     console.error('Failed to start server:', error);
