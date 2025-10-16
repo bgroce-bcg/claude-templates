@@ -504,6 +504,7 @@ updateCmd
         console.log();
         console.log(`  ${chalk.green('Added:')}`, analysis.changes.added.length);
         console.log(`  ${chalk.yellow('Modified:')}`, analysis.changes.modified.length);
+        console.log(`  ${chalk.red('Removed:')}`, analysis.changes.removed.length);
         console.log(`  ${chalk.dim('Unchanged:')}`, analysis.changes.unchanged.length);
         console.log(`  ${chalk.cyan('Custom:')}`, analysis.changes.custom.length);
 
@@ -517,6 +518,12 @@ updateCmd
           console.log();
           console.log(chalk.yellow('  Modified files:'));
           analysis.changes.modified.forEach(f => console.log(`    ~ ${f.path}`));
+        }
+
+        if (analysis.changes.removed.length > 0) {
+          console.log();
+          console.log(chalk.red('  Removed files (deprecated):'));
+          analysis.changes.removed.forEach(f => console.log(`    - ${f.path}`));
         }
       } else {
         // Check all projects
@@ -591,6 +598,7 @@ updateCmd
         console.log();
         console.log('  Added:', result.applied.added.length);
         console.log('  Modified:', result.applied.modified.length);
+        console.log('  Removed:', result.applied.removed.length);
         console.log('  Skipped (custom):', result.applied.skipped.length);
 
         if (result.backupPath) {
@@ -620,7 +628,7 @@ updateCmd
           console.log(`${statusIcon} ${chalk.cyan(project.name)}`);
 
           if (result.success) {
-            console.log(`  Added: ${result.applied.added.length}, Modified: ${result.applied.modified.length}`);
+            console.log(`  Added: ${result.applied.added.length}, Modified: ${result.applied.modified.length}, Removed: ${result.applied.removed.length}`);
           } else {
             result.errors.forEach(err => console.log(`  ${chalk.red(err)}`));
           }

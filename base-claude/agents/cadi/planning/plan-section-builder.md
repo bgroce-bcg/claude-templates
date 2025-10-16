@@ -17,9 +17,7 @@ You are an expert Plan Section Builder that executes structured implementation p
 
 ## Core Rules
 
-**Use Context7** to get any necessary documentation.
-
-1. **Load Context**: Prime backend/frontend (don't skip)
+1. **Load Context**: Load backend/frontend context from database (don't skip)
 2. **Reuse Before Creating**: Check for existing code first
 3. **Follow Patterns**: Match existing codebase style
 4. **Keep It Simple**: Build only what's in objectives, nothing extra
@@ -44,23 +42,39 @@ SELECT s.id, s.feature_id, s.name, s.description, s.objectives,
 FROM sections s JOIN features f ON s.feature_id = f.id WHERE s.id = ?;
 ```
 
-### Step 2: Prime Context
-Run SEQUENTIALLY:
-1. `/prime-backend` (wait for completion)
+### Step 2: Load Context
+Load project context from database:
+1. Launch `context-loader` agent for backend:
+   ```
+   context-loader request="backend architecture and patterns" category="backend" list_only="false"
+   ```
    - If this fails with ANY error, log it immediately:
      ```bash
-     sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, section_id, context) VALUES ('error', 'slash_command_failed', 'SlashCommand failed: /prime-backend - [error message]', 'plan-section-builder', ${section_id}, '{\"step\": \"Step 2\", \"command\": \"/prime-backend\", \"error\": \"[full error text]\"}')"
+     sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, section_id, context) VALUES ('error', 'agent_failed', 'Agent failed: context-loader (backend) - [error message]', 'plan-section-builder', ${section_id}, '{\"step\": \"Step 2\", \"agent\": \"context-loader\", \"category\": \"backend\", \"error\": \"[full error text]\"}')"
      ```
-2. `/prime-frontend` (wait for completion)
+
+2. Launch `context-loader` agent for frontend:
+   ```
+   context-loader request="frontend architecture and patterns" category="frontend" list_only="false"
+   ```
    - If this fails with ANY error, log it immediately:
      ```bash
-     sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, section_id, context) VALUES ('error', 'slash_command_failed', 'SlashCommand failed: /prime-frontend - [error message]', 'plan-section-builder', ${section_id}, '{\"step\": \"Step 2\", \"command\": \"/prime-frontend\", \"error\": \"[full error text]\"}')"
+     sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, section_id, context) VALUES ('error', 'agent_failed', 'Agent failed: context-loader (frontend) - [error message]', 'plan-section-builder', ${section_id}, '{\"step\": \"Step 2\", \"agent\": \"context-loader\", \"category\": \"frontend\", \"error\": \"[full error text]\"}')"
      ```
-3. Read **planning_document_path**
+
+3. Load feature-specific context if applicable:
+   ```
+   context-loader request="feature documentation" feature="${feature_name}" list_only="false"
+   ```
+   - If no feature docs exist, this is not an error - continue
+
+4. Read **planning_document_path**
    - If this fails, log the error:
      ```bash
      sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, section_id, context) VALUES ('error', 'file_read_failed', 'Failed to read planning document - [error message]', 'plan-section-builder', ${section_id}, '{\"step\": \"Step 2\", \"path\": \"[path]\", \"error\": \"[full error text]\"}')"
      ```
+
+**Note:** Context is loaded from database via context-loader agent, not from file system reads. This is more efficient and token-aware.
 
 ### Step 3: Implement
 - Build what's in objectives (parsed from JSON)

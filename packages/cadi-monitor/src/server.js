@@ -155,6 +155,27 @@ class MonitorServer {
       res.json({ errors, stats });
     });
 
+    // Get context loads for a project
+    this.app.get('/api/projects/:id/context-loads', (req, res) => {
+      const monitor = this.projects.get(req.params.id);
+
+      if (!monitor) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const options = {
+        limit: parseInt(req.query.limit) || 50,
+        agentName: req.query.agent || null,
+        featureId: req.query.feature ? parseInt(req.query.feature) : null,
+        sectionId: req.query.section ? parseInt(req.query.section) : null
+      };
+
+      const loads = monitor.getContextLoads(options);
+      const stats = monitor.getContextLoadStats();
+
+      res.json({ loads, stats });
+    });
+
     // Get aggregated stats across all projects
     this.app.get('/api/stats', (req, res) => {
       const stats = {

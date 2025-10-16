@@ -194,6 +194,27 @@ class CADIMonitor {
         this.loadErrors(this.selectedProject);
       }
     });
+
+    // Context sub-tabs
+    document.querySelectorAll('.sub-tab-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const subview = e.target.dataset.subview;
+        this.switchContextSubview(subview);
+      });
+    });
+
+    // Context loads filters
+    document.getElementById('agentFilter').addEventListener('change', (e) => {
+      if (typeof contextLoadsManager !== 'undefined') {
+        contextLoadsManager.setFilter('agent', e.target.value);
+      }
+    });
+
+    document.getElementById('limitFilter').addEventListener('change', (e) => {
+      if (typeof contextLoadsManager !== 'undefined') {
+        contextLoadsManager.setFilter('limit', parseInt(e.target.value) || 50);
+      }
+    });
   }
 
   /**
@@ -437,8 +458,43 @@ class CADIMonitor {
       const data = await response.json();
 
       this.renderContext(data.documents);
+
+      // Also load context loads if that subview is active
+      const loadsSubview = document.getElementById('contextLoads');
+      if (loadsSubview && loadsSubview.classList.contains('active') && typeof contextLoadsManager !== 'undefined') {
+        await contextLoadsManager.init(projectId);
+      }
     } catch (error) {
       console.error('Failed to load context:', error);
+    }
+  }
+
+  /**
+   * Switch context subview
+   */
+  switchContextSubview(subview) {
+    // Update sub-tabs
+    document.querySelectorAll('.sub-tab-btn').forEach(btn => {
+      if (btn.dataset.subview === subview) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Update sub-views
+    document.querySelectorAll('.sub-view').forEach(view => {
+      view.classList.remove('active');
+    });
+
+    if (subview === 'documents') {
+      document.getElementById('contextDocuments').classList.add('active');
+    } else if (subview === 'loads') {
+      document.getElementById('contextLoads').classList.add('active');
+      // Load context loads when switching to this view
+      if (this.selectedProject && typeof contextLoadsManager !== 'undefined') {
+        contextLoadsManager.init(this.selectedProject);
+      }
     }
   }
 

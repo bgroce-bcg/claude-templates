@@ -1,189 +1,230 @@
 # CADI Monitor
 
-A lightweight, framework-agnostic monitoring dashboard for CADI-powered projects. Monitor multiple projects simultaneously with real-time updates, track feature progress, view context documentation, and observe agent activity—all from a single interface.
+A lightweight monitoring dashboard for CADI-powered projects. Monitor multiple projects simultaneously with real-time updates, track feature progress, and view context documentation—all from a single interface.
 
-## Features
+## Quick Start (New Installation)
 
-- **Multi-Project Monitoring** - Monitor multiple CADI projects from a single dashboard
-- **Real-time Updates** - WebSocket-based live updates when project state changes
-- **Framework Agnostic** - Works with Laravel, Next.js, standalone projects, or any framework
-- **Lightweight** - Minimal dependencies, no build step required for UI
-- **Read-Only** - Safely monitors your projects without modifying them
-- **Zero Configuration** - Just point it to your project directories
+Get up and running in 3 steps:
 
-## What It Monitors
+```bash
+# 1. Install dependencies
+cd packages/cadi-monitor
+npm install
 
-### Feature Progress
-- Feature and section status tracking
-- Time estimates vs actual time spent
-- Dependencies between sections
-- Completion timelines
+# 2. Link globally (makes 'cadi-monitor' command available everywhere)
+npm link
 
-### Context & Documentation
-- Indexed documentation
-- Token usage per document
-- Documentation categories (backend, frontend, features, plans)
-- Last indexed timestamps
+# 3. Initialize and start monitoring
+cadi-monitor init
+cadi-monitor add ~/path/to/your/project "My Project"
+cadi-monitor start --open
+```
 
-### Project Health
-- Database integrity checks
-- File system monitoring
-- Real-time change detection
+That's it! The dashboard will open in your browser at http://localhost:3030.
 
-### Activity Feed
-- File changes across all projects
-- Feature and section completions
-- Agent executions (future)
+## What CADI Monitor Does
+
+**Monitors your CADI projects** by reading `.claude/project.db` and watching for file changes:
+- **Feature Progress** - Track completion status, time estimates, and dependencies
+- **Context Documents** - View indexed documentation and token usage
+- **Real-time Updates** - See changes as they happen via WebSocket
+- **Activity Feed** - Watch file changes and feature completions across all projects
+
+**Read-only and safe** - Never modifies your projects, just observes them.
 
 ## Installation
 
-### From Source
+### Prerequisites
+- Node.js >= 18.0.0
+- A CADI project with `.claude/project.db` database
+
+### Setup
 
 ```bash
-# Clone or navigate to the repository
+# Navigate to cadi-monitor
 cd packages/cadi-monitor
 
 # Install dependencies
 npm install
 
-# Link globally (optional)
+# Link globally (recommended)
 npm link
-
-# Or run directly
-node bin/cli.js --help
 ```
 
-### As Package (Future)
+After linking, `cadi-monitor` command will be available system-wide.
 
+## Common Workflows
+
+### First Time Setup
 ```bash
-npm install -g @cadi/monitor
+cadi-monitor init                                    # Create config file
+cadi-monitor add ~/my-project "My Project"          # Add your first project
+cadi-monitor start --open                           # Start and view dashboard
 ```
 
-## Quick Start
-
-### 1. Initialize Configuration
-
+### Adding Multiple Projects
 ```bash
-cadi-monitor init
-```
+# Add projects one by one
+cadi-monitor add ~/projects/api "API Backend"
+cadi-monitor add ~/projects/web "Web Frontend"
 
-This creates `~/.cadi-monitor/config.json` with default settings.
-
-### 2. Add Your Projects
-
-```bash
-# Add a single project
-cadi-monitor add ~/projects/my-laravel-app "Laravel API"
-
-# Add another project
-cadi-monitor add ~/projects/my-nextjs-app "Next.js Dashboard"
-
-# Or scan a directory for CADI projects
+# Or auto-discover all CADI projects in a directory
 cadi-monitor scan ~/projects --auto-add
 ```
 
-### 3. Start the Server
-
+### Daily Use
 ```bash
-# Start server (default: http://localhost:3030)
-cadi-monitor start
-
-# Start and open browser automatically
-cadi-monitor start --open
-
-# Custom port and host
-cadi-monitor start --port 8080 --host 0.0.0.0
+cadi-monitor start --open       # Start server and open browser
+cadi-monitor open               # Open browser (if server already running)
+cadi-monitor list               # View all monitored projects
+cadi-monitor status             # Check project health
 ```
 
-### 4. Open the Dashboard
-
+### Managing Projects
 ```bash
-# Open in browser
-cadi-monitor open
-
-# Or navigate manually to http://localhost:3030
+cadi-monitor list               # See all projects
+cadi-monitor disable api        # Temporarily stop monitoring a project
+cadi-monitor enable api         # Resume monitoring
+cadi-monitor remove api         # Remove from monitoring entirely
 ```
 
-## CLI Commands
+## Commands Reference
 
-### Server Management
+### Essential Commands
 
+| Command | Description | Example |
+|---------|-------------|---------|
+| `init` | Create config file (run once) | `cadi-monitor init` |
+| `add <path> [name]` | Add a project to monitor | `cadi-monitor add ~/my-app "My App"` |
+| `start` | Start the monitoring server | `cadi-monitor start --open` |
+| `list` | Show all monitored projects | `cadi-monitor list` |
+| `status` | Check project health | `cadi-monitor status` |
+
+### Server Commands
+
+| Command | Options | Use When |
+|---------|---------|----------|
+| `start` | `-p, --port <port>`<br>`-h, --host <host>`<br>`-o, --open` | Start monitoring server<br>Default: http://localhost:3030 |
+| `open` | - | Open dashboard in browser |
+
+**Examples:**
 ```bash
-# Start the monitor server
-cadi-monitor start [options]
-  -p, --port <port>    Port to run on (default: 3030)
-  -h, --host <host>    Host to bind to (default: localhost)
-  -o, --open           Open browser after starting
-
-# Open the UI in browser
-cadi-monitor open
+cadi-monitor start                        # Start on default port 3030
+cadi-monitor start --open                 # Start and open browser
+cadi-monitor start --port 8080            # Use custom port
+cadi-monitor start --host 0.0.0.0         # Allow remote access
 ```
 
-### Project Management
+### Project Management Commands
 
+| Command | Options | Use When |
+|---------|---------|----------|
+| `add <path> [name]` | `-i, --id <id>`<br>`-c, --color <color>` | Add a new project to monitor |
+| `remove <id>` | - | Stop monitoring a project (alias: `rm`) |
+| `list` | `-a, --all` | View all projects (alias: `ls`) |
+| `enable <id>` | - | Resume monitoring a disabled project |
+| `disable <id>` | - | Temporarily pause monitoring |
+| `scan <path>` | `--auto-add` | Find CADI projects in a directory |
+
+**Examples:**
 ```bash
-# Add a project
-cadi-monitor add <path> [name] [options]
-  -i, --id <id>        Project ID (default: directory name)
-  -c, --color <color>  Project color (hex code)
+# Add projects with custom settings
+cadi-monitor add ~/api "API" --id backend --color "#FF2D20"
 
-# Remove a project
-cadi-monitor remove <id>
-cadi-monitor rm <id>
+# Find and add all projects automatically
+cadi-monitor scan ~/projects --auto-add
 
-# List all projects
-cadi-monitor list
-cadi-monitor ls
-  -a, --all           Show all projects including disabled
-
-# Enable/disable a project
-cadi-monitor enable <id>
-cadi-monitor disable <id>
-
-# Scan for projects
-cadi-monitor scan <path> [options]
-  --auto-add          Automatically add discovered projects
+# Manage existing projects
+cadi-monitor list                         # See all projects
+cadi-monitor disable backend              # Pause monitoring
+cadi-monitor enable backend               # Resume monitoring
+cadi-monitor remove backend               # Remove entirely
 ```
 
-### Configuration
+### Configuration Commands
 
+| Command | Options | Use When |
+|---------|---------|----------|
+| `init` | `-f, --force` | Create/reset config file |
+| `config` | - | View current configuration |
+| `status` | - | Check project health and connectivity |
+
+**Examples:**
 ```bash
-# Initialize configuration
+cadi-monitor init                         # First-time setup
+cadi-monitor init --force                 # Reset to defaults
+cadi-monitor config                       # View settings
+cadi-monitor status                       # Health check
+```
+
+## Use Cases
+
+### Solo Developer
+**Scenario:** You're working on a personal project and want to track progress.
+```bash
 cadi-monitor init
-  -f, --force         Overwrite existing configuration
-
-# Show current configuration
-cadi-monitor config
-
-# Show status
-cadi-monitor status
+cadi-monitor add ~/my-side-project "Side Project"
+cadi-monitor start --open
 ```
+View feature completion, track time estimates, and see your documentation coverage in real-time.
+
+### Full-Stack Developer
+**Scenario:** You're managing both backend API and frontend app.
+```bash
+cadi-monitor init
+cadi-monitor add ~/projects/api "Backend API"
+cadi-monitor add ~/projects/web "Web App"
+cadi-monitor start --open
+```
+Monitor both projects simultaneously. See when features complete, identify blockers, and ensure documentation stays in sync.
+
+### Team Lead
+**Scenario:** You need oversight of all team projects.
+```bash
+cadi-monitor scan ~/team-projects --auto-add
+cadi-monitor start --host 0.0.0.0  # Allow team access
+```
+Get a bird's-eye view of velocity, track dependencies, and spot issues early across all projects.
+
+### CI/CD Integration
+**Scenario:** Integrate monitoring into your build pipeline.
+```bash
+# Use the REST API
+curl http://localhost:3030/api/projects/my-app/features
+curl http://localhost:3030/api/stats
+```
+Track build status, test coverage, and deployment readiness via REST API.
 
 ## Dashboard Views
 
+The web UI has four main views:
+
 ### Overview
-- Aggregated statistics across all projects
+Aggregated statistics across all monitored projects:
 - Project cards with quick stats
-- Active vs completed features
-- Total context documents
+- Active vs completed features count
+- Total context documents indexed
+- Recent activity summary
 
 ### Features
-- Per-project feature breakdown
-- Expandable sections with detailed info
-- Status badges (planning, ready, in_progress, completed)
-- Time tracking (estimated vs actual hours)
+Per-project feature tracking:
+- Expandable sections with detailed information
+- Status badges: planning → ready → in_progress → completed
+- Time tracking: estimated vs actual hours
 - Dependencies and verification criteria
 
 ### Context
-- Indexed documentation by category
-- Token estimates per document
+Documentation and knowledge base:
+- Indexed documentation by category (backend, frontend, features, plans)
+- Token usage estimates per document
 - File paths and summaries
 - Last indexed timestamps
 
 ### Activity
-- Real-time feed of changes across all projects
-- File modifications
-- Feature/section completions
+Real-time feed of all changes:
+- File modifications across all projects
+- Feature and section completions
+- Timestamps and project attribution
 - Agent activity (when instrumented)
 
 ## Configuration
@@ -222,15 +263,17 @@ Configuration is stored in `~/.cadi-monitor/config.json`:
 
 ## Project Requirements
 
-For a project to be monitored, it must have:
+For a project to be monitored, it needs:
 
-1. A `.claude/` directory
-2. A `.claude/project.db` SQLite database with the CADI schema
+1. **`.claude/` directory** - The CADI workspace folder
+2. **`.claude/project.db`** - SQLite database with CADI schema (features, sections tables)
 
-The monitor will automatically detect and read from:
-- `.claude/project.db` - Feature and section data
-- `docs/plans/` - Planning documents
-- `docs/features/` - Implementation documentation
+The monitor automatically reads from:
+- `.claude/project.db` - Feature and section tracking data
+- `docs/plans/` - Planning documents (optional)
+- `docs/features/` - Implementation documentation (optional)
+
+If your project doesn't have these, it won't appear in the monitor. Use `cadi-monitor status` to diagnose issues.
 
 ## Architecture
 
@@ -341,19 +384,6 @@ ws.send(JSON.stringify({
 }));
 ```
 
-## Use Cases
-
-### Scenario 1: Full-Stack Developer
-Monitor your backend API and frontend app simultaneously. See when features complete, track documentation coverage, and spot issues early.
-
-### Scenario 2: Team Lead
-Get a bird's-eye view of all team projects. Track velocity, identify blockers, and ensure documentation standards are met.
-
-### Scenario 3: Solo Developer
-Keep tabs on multiple side projects. Quickly see what's in progress, what needs attention, and overall project health.
-
-### Scenario 4: CI/CD Integration
-Use the REST API to integrate with your CI/CD pipeline. Track build status, test coverage, and deployment progress.
 
 ## Troubleshooting
 

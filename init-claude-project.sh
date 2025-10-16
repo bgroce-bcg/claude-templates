@@ -301,8 +301,9 @@ if ! command -v sqlite3 &> /dev/null; then
     echo -e "${YELLOW}Warning: sqlite3 not found. Please install sqlite3 to use database features.${NC}"
     echo -e "${YELLOW}Install sqlite3 and re-run this script to create the database.${NC}"
 else
-    # Create the database with schema
+    # Create the database with schema v5
     sqlite3 "$DB_PATH" << 'EOF'
+-- Features table
 CREATE TABLE IF NOT EXISTS features (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -315,6 +316,7 @@ CREATE TABLE IF NOT EXISTS features (
     completed_at TIMESTAMP
 );
 
+-- Sections table
 CREATE TABLE IF NOT EXISTS sections (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     feature_id INTEGER NOT NULL,
@@ -331,12 +333,13 @@ CREATE TABLE IF NOT EXISTS sections (
     completed_at TIMESTAMP,
     notes TEXT,
     FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
-    FOREIGN KEY (depends_on) REFERENCES sections(id) ON DELETE SET NULL
+    FOREIGN KEY (depends_on) REFERENCES sections(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_sections_feature_status ON sections(feature_id, status);
 CREATE INDEX IF NOT EXISTS idx_sections_order ON sections(feature_id, order_index);
 
+-- Context documents table
 CREATE TABLE IF NOT EXISTS context_documents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_path TEXT NOT NULL UNIQUE,
@@ -354,6 +357,7 @@ CREATE TABLE IF NOT EXISTS context_documents (
 CREATE INDEX IF NOT EXISTS idx_docs_category ON context_documents(category);
 CREATE INDEX IF NOT EXISTS idx_docs_feature ON context_documents(feature_id);
 
+-- Error log table
 CREATE TABLE IF NOT EXISTS error_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -364,19 +368,50 @@ CREATE TABLE IF NOT EXISTS error_log (
     error_type TEXT NOT NULL,
     error_message TEXT NOT NULL,
     error_context TEXT,
-    resolution TEXT,
     severity TEXT CHECK(severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
     resolved BOOLEAN DEFAULT 0,
+    resolution TEXT,
+    resolved_at TIMESTAMP,
     FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
     FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_error_timestamp ON error_log(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_error_agent ON error_log(agent_name);
-CREATE INDEX IF NOT EXISTS idx_error_severity ON error_log(severity);
-CREATE INDEX IF NOT EXISTS idx_error_resolved ON error_log(resolved);
-CREATE INDEX IF NOT EXISTS idx_error_feature ON error_log(feature_id);
-CREATE INDEX IF NOT EXISTS idx_error_section ON error_log(section_id);
+CREATE INDEX IF NOT EXISTS idx_error_log_timestamp ON error_log(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_error_log_feature ON error_log(feature_id);
+CREATE INDEX IF NOT EXISTS idx_error_log_severity ON error_log(severity);
+CREATE INDEX IF NOT EXISTS idx_error_log_resolved ON error_log(resolved);
+
+-- Context loads table (v5)
+CREATE TABLE IF NOT EXISTS context_loads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    agent_name TEXT NOT NULL,
+    feature_id INTEGER,
+    section_id INTEGER,
+    request TEXT NOT NULL,
+    category TEXT,
+    tags TEXT,
+    document_ids TEXT,
+    document_count INTEGER NOT NULL,
+    total_tokens INTEGER,
+    duration_ms INTEGER,
+    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_context_loads_timestamp ON context_loads(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_context_loads_agent ON context_loads(agent_name);
+CREATE INDEX IF NOT EXISTS idx_context_loads_feature ON context_loads(feature_id);
+CREATE INDEX IF NOT EXISTS idx_context_loads_section ON context_loads(section_id);
+
+-- Schema version table
+CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert initial schema version (v5)
+INSERT INTO schema_version (version) VALUES (5);
 EOF
 
     if [ $? -eq 0 ]; then

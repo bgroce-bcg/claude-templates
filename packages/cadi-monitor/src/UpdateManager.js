@@ -31,7 +31,8 @@ class UpdateManager extends EventEmitter {
         added: [],      // New files from template
         modified: [],   // Files that exist but differ
         unchanged: [],  // Files that are identical
-        custom: []      // Custom files not in template
+        custom: [],     // Custom files not in template
+        removed: []     // Files in project but removed from template (CADI managed only)
       },
       schema: null,     // Database schema status
       safe: true,
@@ -99,6 +100,28 @@ class UpdateManager extends EventEmitter {
       // Check for custom scripts (using same templateScriptsDir from above)
       const scriptsTemplateDir = path.join(this.templatePath, '../scripts');
       this.findCustomFiles(
+        path.join(projectClaudeDir, 'scripts'),
+        scriptsTemplateDir,
+        'scripts',
+        analysis
+      );
+
+      // Find removed files (CADI-managed files that no longer exist in template)
+      this.findRemovedFiles(
+        path.join(projectClaudeDir, 'agents'),
+        templateClaudeDir,
+        'agents',
+        analysis
+      );
+
+      this.findRemovedFiles(
+        path.join(projectClaudeDir, 'commands'),
+        templateCommandsDir,
+        'commands',
+        analysis
+      );
+
+      this.findRemovedFiles(
         path.join(projectClaudeDir, 'scripts'),
         scriptsTemplateDir,
         'scripts',
@@ -231,6 +254,64 @@ class UpdateManager extends EventEmitter {
   }
 
   /**
+   * Find removed files - files in project that no longer exist in template
+   * Only tracks CADI-managed files (in /cadi/ directories or template scripts)
+   */
+  findRemovedFiles(projectDir, templateDir, relativePath, analysis) {
+    if (!fs.existsSync(projectDir)) return;
+
+    const entries = fs.readdirSync(projectDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const projectPath = path.join(projectDir, entry.name);
+      const templatePath = path.join(templateDir, entry.name);
+      const relPath = path.join(relativePath, entry.name);
+
+      if (entry.isDirectory()) {
+        // Recurse into subdirectory
+        this.findRemovedFiles(
+          projectPath,
+          templatePath,
+          relPath,
+          analysis
+        );
+      } else if (entry.isFile()) {
+        // Check if this is a file we should track
+        const isMarkdown = entry.name.endsWith('.md');
+        const isScript = relativePath.startsWith('scripts') && (
+          entry.name.endsWith('.js') ||
+          entry.name.endsWith('.sh') ||
+          entry.name.endsWith('.py')
+        );
+
+        if (isMarkdown || isScript) {
+          // Check if file exists in template
+          if (!fs.existsSync(templatePath)) {
+            // File doesn't exist in template - check if it's CADI-managed or custom
+            const isCadiPath = relPath.includes('/cadi/') ||
+                             relPath.includes('\\cadi\\') ||
+                             relPath.startsWith('scripts/') ||
+                             relPath.startsWith('scripts\\');
+
+            // Only mark for removal if it's a CADI-managed path
+            // Custom files (not in /cadi/ or template scripts) should be preserved
+            if (isCadiPath) {
+              // Double-check it's not already marked as custom
+              const isCustom = analysis.changes.custom.some(c => c.path === relPath);
+              if (!isCustom) {
+                analysis.changes.removed.push({
+                  path: relPath,
+                  type: 'file'
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Create a backup of the project's .claude directory
    */
   async createBackup(projectPath) {
@@ -349,6 +430,7 @@ class UpdateManager extends EventEmitter {
       applied: {
         added: [],
         modified: [],
+        removed: [],
         skipped: []
       },
       schemaMigration: null,
@@ -415,6 +497,41 @@ class UpdateManager extends EventEmitter {
         result.applied.modified.push(item.path);
 
         this.emit('fileModified', {
+          projectPath,
+          file: item.path
+        });
+      }
+
+      // Remove obsolete CADI-managed files
+      for (const item of analysis.changes.removed) {
+        const projectFilePath = path.join(projectClaudeDir, item.path);
+
+        if (!dryRun) {
+          if (fs.existsSync(projectFilePath)) {
+            fs.unlinkSync(projectFilePath);
+
+            // Remove empty parent directories
+            let dir = path.dirname(projectFilePath);
+            while (dir !== projectClaudeDir) {
+              try {
+                const entries = fs.readdirSync(dir);
+                if (entries.length === 0) {
+                  fs.rmdirSync(dir);
+                  dir = path.dirname(dir);
+                } else {
+                  break;
+                }
+              } catch (error) {
+                // Directory not empty or doesn't exist, stop cleanup
+                break;
+              }
+            }
+          }
+        }
+
+        result.applied.removed.push(item.path);
+
+        this.emit('fileRemoved', {
           projectPath,
           file: item.path
         });

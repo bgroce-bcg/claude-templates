@@ -9,7 +9,7 @@ const path = require('path');
 class SchemaManager {
   constructor() {
     // Define the expected schema with version
-    this.schemaVersion = 4; // Increment when schema changes
+    this.schemaVersion = 5; // Increment when schema changes
 
     this.expectedSchema = {
       version: this.schemaVersion,
@@ -94,6 +94,30 @@ class SchemaManager {
             'CREATE INDEX IF NOT EXISTS idx_error_log_feature ON error_log(feature_id)',
             'CREATE INDEX IF NOT EXISTS idx_error_log_severity ON error_log(severity)',
             'CREATE INDEX IF NOT EXISTS idx_error_log_resolved ON error_log(resolved)'
+          ]
+        },
+        context_loads: {
+          columns: [
+            'id INTEGER PRIMARY KEY AUTOINCREMENT',
+            'timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+            'agent_name TEXT NOT NULL',
+            'feature_id INTEGER',
+            'section_id INTEGER',
+            'request TEXT NOT NULL',
+            'category TEXT',
+            'tags TEXT',
+            'document_ids TEXT',
+            'document_count INTEGER NOT NULL',
+            'total_tokens INTEGER',
+            'duration_ms INTEGER',
+            'FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE',
+            'FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE'
+          ],
+          indexes: [
+            'CREATE INDEX IF NOT EXISTS idx_context_loads_timestamp ON context_loads(timestamp DESC)',
+            'CREATE INDEX IF NOT EXISTS idx_context_loads_agent ON context_loads(agent_name)',
+            'CREATE INDEX IF NOT EXISTS idx_context_loads_feature ON context_loads(feature_id)',
+            'CREATE INDEX IF NOT EXISTS idx_context_loads_section ON context_loads(section_id)'
           ]
         },
         schema_version: {
@@ -199,6 +223,35 @@ class SchemaManager {
             // Add missing column
             db.exec('ALTER TABLE error_log ADD COLUMN resolved_at TIMESTAMP;');
           }
+        }
+      },
+      {
+        version: 5,
+        description: 'Add context_loads table for monitoring agent context',
+        up: (db) => {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS context_loads (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              agent_name TEXT NOT NULL,
+              feature_id INTEGER,
+              section_id INTEGER,
+              request TEXT NOT NULL,
+              category TEXT,
+              tags TEXT,
+              document_ids TEXT,
+              document_count INTEGER NOT NULL,
+              total_tokens INTEGER,
+              duration_ms INTEGER,
+              FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
+              FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_context_loads_timestamp ON context_loads(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_context_loads_agent ON context_loads(agent_name);
+            CREATE INDEX IF NOT EXISTS idx_context_loads_feature ON context_loads(feature_id);
+            CREATE INDEX IF NOT EXISTS idx_context_loads_section ON context_loads(section_id);
+          `);
         }
       }
     ];

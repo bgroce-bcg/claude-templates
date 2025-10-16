@@ -488,6 +488,149 @@ class ProjectMonitor extends EventEmitter {
   }
 
   /**
+   * Get context loads
+   */
+  getContextLoads(options = {}) {
+    if (!this.db) return [];
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='context_loads'"
+      ).get();
+
+      if (!tableExists) {
+        return [];
+      }
+
+      const {
+        limit = 50,
+        agentName = null,
+        featureId = null,
+        sectionId = null
+      } = options;
+
+      let query = `
+        SELECT
+          cl.id,
+          cl.timestamp,
+          cl.agent_name,
+          cl.feature_id,
+          cl.section_id,
+          cl.request,
+          cl.category,
+          cl.tags,
+          cl.document_ids,
+          cl.document_count,
+          cl.total_tokens,
+          cl.duration_ms,
+          f.name as feature_name,
+          s.name as section_name
+        FROM context_loads cl
+        LEFT JOIN features f ON cl.feature_id = f.id
+        LEFT JOIN sections s ON cl.section_id = s.id
+        WHERE 1=1
+      `;
+
+      const params = [];
+
+      if (agentName) {
+        query += ' AND cl.agent_name = ?';
+        params.push(agentName);
+      }
+
+      if (featureId) {
+        query += ' AND cl.feature_id = ?';
+        params.push(featureId);
+      }
+
+      if (sectionId) {
+        query += ' AND cl.section_id = ?';
+        params.push(sectionId);
+      }
+
+      query += ' ORDER BY cl.timestamp DESC LIMIT ?';
+      params.push(limit);
+
+      return this.db.prepare(query).all(...params);
+    } catch (error) {
+      console.error(`Error getting context loads for ${this.id}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get context load statistics
+   */
+  getContextLoadStats() {
+    if (!this.db) return null;
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='context_loads'"
+      ).get();
+
+      if (!tableExists) {
+        return {
+          total: 0,
+          byAgent: {},
+          byCategory: {},
+          totalDocuments: 0,
+          totalTokens: 0,
+          avgDuration: 0
+        };
+      }
+
+      // Total loads
+      const total = this.db.prepare('SELECT COUNT(*) as count FROM context_loads').get();
+
+      // By agent
+      const byAgent = this.db.prepare(`
+        SELECT agent_name, COUNT(*) as count
+        FROM context_loads
+        GROUP BY agent_name
+        ORDER BY count DESC
+      `).all();
+
+      // By category
+      const byCategory = this.db.prepare(`
+        SELECT category, COUNT(*) as count
+        FROM context_loads
+        WHERE category IS NOT NULL
+        GROUP BY category
+      `).all();
+
+      // Totals and averages
+      const totals = this.db.prepare(`
+        SELECT
+          SUM(document_count) as total_documents,
+          SUM(total_tokens) as total_tokens,
+          AVG(duration_ms) as avg_duration
+        FROM context_loads
+      `).get();
+
+      return {
+        total: total.count,
+        byAgent: byAgent.reduce((acc, row) => {
+          acc[row.agent_name] = row.count;
+          return acc;
+        }, {}),
+        byCategory: byCategory.reduce((acc, row) => {
+          acc[row.category] = row.count;
+          return acc;
+        }, {}),
+        totalDocuments: totals.total_documents || 0,
+        totalTokens: totals.total_tokens || 0,
+        avgDuration: Math.round(totals.avg_duration || 0)
+      };
+    } catch (error) {
+      console.error(`Error getting context load stats for ${this.id}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Get health status
    */
   getHealth() {

@@ -131,7 +131,26 @@ Total estimated tokens: {sum}
 
 1. **Check token budget**: Sum estimated_tokens for all matched docs
 2. **Read file contents**: Read each matched markdown file
-3. **Return formatted output**:
+3. **Log context load** to database:
+   ```sql
+   INSERT INTO context_loads (
+     agent_name, feature_id, section_id, request, category, tags,
+     document_ids, document_count, total_tokens, duration_ms
+   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+   ```
+   Where:
+   - `agent_name`: Name of calling agent (e.g., "plan-section-builder")
+   - `feature_id`: NULL or current feature ID if known
+   - `section_id`: NULL or current section ID if known
+   - `request`: The request description provided
+   - `category`: The category filter used
+   - `tags`: Comma-separated tags if provided
+   - `document_ids`: JSON array of document IDs loaded (e.g., "[1,2,5]")
+   - `document_count`: Number of documents loaded
+   - `total_tokens`: Sum of estimated_tokens
+   - `duration_ms`: Time taken to load context in milliseconds
+
+4. **Return formatted output**:
    ```
    Loaded {count} documents ({total_tokens} estimated tokens):
 
@@ -389,3 +408,5 @@ sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_m
 - Clean up orphaned database entries
 - Validate user inputs (category values, etc.)
 - Log ALL errors to error_log table
+- **Log ALL context loads** to context_loads table (when list_only=false)
+- Track duration of context loading operations for performance monitoring
