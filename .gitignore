@@ -1,20 +1,18 @@
 # Dependencies
 node_modules/
 package-lock.json
+yarn.lock
 
-# Runtime databases (user-specific data)
+# Project-specific databases and runtime data
+.claude/
 *.db
-!.claude/migrations/*.sql
-
-# Project-specific Claude data
-base-claude/.claude/
-.claude/project.db
 
 # Logs
+logs/
 *.log
 npm-debug.log*
 
-# OS
+# Runtime
 .DS_Store
 *.swp
 *.swo
@@ -25,10 +23,6 @@ npm-debug.log*
 .idea/
 *.sublime-*
 
-# Environment
-.env
-.env.local
-
-# Build outputs
-dist/
-build/
+# Test coverage
+coverage/
+.nyc_output/
