@@ -5,6 +5,25 @@
 
 ## Workflow
 
+**Performance Optimization**: This command can use a fast native script OR the agent-based approach.
+
+### Option 1: Fast Script-Based Indexing (Preferred)
+
+If Node.js is available, use the native indexing script for faster performance:
+
+1. **Check for script availability**:
+   ```bash
+   if [ -f .claude/scripts/index-documentation.js ]; then
+     node .claude/scripts/index-documentation.js
+   fi
+   ```
+
+2. **If successful**: Report completion and show statistics
+
+3. **Fallback**: If script fails or Node.js unavailable, proceed to Option 2
+
+### Option 2: Agent-Based Indexing (Fallback)
+
 Use the `context-loader` agent to scan and index all project documentation:
 
 1. **Determine scope**:

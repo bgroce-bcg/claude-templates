@@ -10,6 +10,13 @@ argument-hint: [path to planned feature]
 
 ## Workflow
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
 ### Step 1: Get Feature
 ```sql
 SELECT id, name, status, planning_doc_path FROM features WHERE name = $ARGUMENTS;

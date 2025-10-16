@@ -13,6 +13,13 @@ Query and display plan progress from the project database.
 
 ## Workflow
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
 ### Step 1: Check Database Exists
 - Check if `.claude/project.db` exists
 - If not, suggest running `/db-init` first

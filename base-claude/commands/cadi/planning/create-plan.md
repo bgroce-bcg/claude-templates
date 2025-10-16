@@ -21,6 +21,13 @@ PATH_TO_PLAN: docs/plans/`FEATURE`
 
 ## Workflow
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
 ### Step 1: Validate
 - If no FEATURE: ask for it
 - Check `.claude/project.db` exists (if not: `/db-init`)

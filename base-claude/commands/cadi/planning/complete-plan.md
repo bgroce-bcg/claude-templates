@@ -7,6 +7,13 @@ Take in a FEATURE varialbe, then execute the Workflow, then Report back to the u
 
 ## Workflow
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
 ### Step 1: Validate Completion
 ```sql
 SELECT COUNT(*) as total, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as done

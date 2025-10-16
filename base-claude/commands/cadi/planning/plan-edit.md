@@ -13,6 +13,13 @@ Interactively edit sections for a feature in the project database.
 
 ## Workflow
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
 ### Step 1: Validate Input
 - If no FEATURE_NAME provided, stop and ask for feature name
 - Check if `.claude/project.db` exists, if not suggest `/db-init`
