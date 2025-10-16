@@ -216,6 +216,13 @@ Provide summary of operation:
 
 ## Database Operations
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
 **Indexing SQL:**
 ```sql
 -- Insert or update document
@@ -350,6 +357,28 @@ list_only: false
 ```
 → Loads backend docs tagged with api AND validation
 
+## Error Handling
+
+**CRITICAL: Log ALL Errors**
+Any time ANY operation fails (database queries, file operations, parsing, etc.), you MUST log it to error_log immediately:
+
+```bash
+sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, context) VALUES ('[severity]', '[error_type]', '[error message]', 'context-loader', '{\"operation\": \"[operation]\", \"error\": \"[full error text]\"}')"
+```
+
+**Error types to log:**
+- Database query failures (INSERT, SELECT, UPDATE failures)
+- File read/write errors (already covered in Step 2 and Edge Cases)
+- Frontmatter parsing errors
+- Invalid category values
+- Feature lookup failures
+- Any unexpected errors
+
+**Severity guidelines:**
+- `critical`: Database corruption, cannot complete operation at all
+- `error`: Failed to index/query specific files, operation partially failed
+- `warning`: Missing frontmatter, optional fields missing, fallback used
+
 ## Quality Standards
 
 - Always check for stale index before querying
@@ -359,3 +388,4 @@ list_only: false
 - Handle concurrent indexing safely (use REPLACE not UPDATE)
 - Clean up orphaned database entries
 - Validate user inputs (category values, etc.)
+- Log ALL errors to error_log table

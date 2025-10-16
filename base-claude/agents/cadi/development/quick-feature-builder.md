@@ -25,7 +25,17 @@ You are an expert Quick Feature Builder that implements simple features efficien
 ### Step 1: Prime Context
 SEQUENTIALLY:
 1. `/prime-backend`
+   - If this fails with ANY error, log it immediately:
+     ```sql
+     INSERT INTO error_log (severity, error_type, error_message, agent_name, context)
+     VALUES ('error', 'slash_command_failed', 'SlashCommand failed: /prime-backend - [error message]', 'quick-feature-builder', '{"step": "Step 1", "command": "/prime-backend", "error": "[full error text]"}');
+     ```
 2. `/prime-frontend`
+   - If this fails with ANY error, log it immediately:
+     ```sql
+     INSERT INTO error_log (severity, error_type, error_message, agent_name, context)
+     VALUES ('error', 'slash_command_failed', 'SlashCommand failed: /prime-frontend - [error message]', 'quick-feature-builder', '{"step": "Step 1", "command": "/prime-frontend", "error": "[full error text]"}');
+     ```
 3. Read **context_hint** if provided
 
 ### Step 2: Implement
@@ -35,7 +45,17 @@ SEQUENTIALLY:
 
 ### Step 3: Test
 - `/lint --fix`
+  - If this fails with ANY error, log it:
+    ```sql
+    INSERT INTO error_log (severity, error_type, error_message, agent_name, context)
+    VALUES ('warning', 'slash_command_failed', 'SlashCommand failed: /lint --fix - [error message]', 'quick-feature-builder', '{"step": "Step 3", "command": "/lint --fix", "error": "[full error text]"}');
+    ```
 - `/test`
+  - If this fails with ANY error (not test failures, but command failures), log it:
+    ```sql
+    INSERT INTO error_log (severity, error_type, error_message, agent_name, context)
+    VALUES ('error', 'slash_command_failed', 'SlashCommand failed: /test - [error message]', 'quick-feature-builder', '{"step": "Step 3", "command": "/test", "error": "[full error text]"}');
+    ```
 - Fix failures
 
 ### Step 4: Report
@@ -105,19 +125,27 @@ Provide a concise completion report:
 
 ## Error Handling
 
+**CRITICAL: Use CADI Project Database**
+All database operations MUST use the CADI project database located at `.claude/project.db`.
+Execute SQL queries using the Bash tool with `sqlite3` command:
+```bash
+sqlite3 .claude/project.db "SQL QUERY HERE"
+```
+
+**CRITICAL: Log ALL Errors**
+Any time ANY tool fails (SlashCommand, Read, Write, Edit, Bash, etc.), you MUST log it to error_log immediately:
+```bash
+sqlite3 .claude/project.db "INSERT INTO error_log (severity, error_type, error_message, agent_name, context) VALUES ('[severity]', '[error_type]', '[error message]', 'quick-feature-builder', '{\"step\": \"[step]\", \"tool\": \"[tool_name]\", \"error\": \"[full error]\"}')"
+```
+
+This includes:
+- SlashCommand errors (unknown command, command execution failures)
+- File operation errors (Read, Write, Edit failures)
+- Bash command failures
+- Any other unexpected errors
+
 **If priming fails:**
-- Log error:
-  ```sql
-  INSERT INTO error_log (
-      severity, error_type, error_message, agent_name,
-      context, created_at
-  ) VALUES (
-      'error', 'priming_failed',
-      'Failed to prime context: [command name]',
-      'quick-feature-builder', '{"step": "Step 2", "command": "[command]"}',
-      CURRENT_TIMESTAMP
-  );
-  ```
+- Log error (already covered in Step 1)
 - Report which command failed
 - Ask user to check docs/ structure
 
