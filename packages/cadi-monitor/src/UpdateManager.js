@@ -82,6 +82,35 @@ class UpdateManager extends EventEmitter {
         );
       }
 
+      // Analyze settings.json (in base-claude/.claude)
+      const templateSettingsFile = path.join(this.templatePath, '.claude/settings.json');
+      const projectSettingsFile = path.join(projectClaudeDir, 'settings.json');
+      if (fs.existsSync(templateSettingsFile)) {
+        if (!fs.existsSync(projectSettingsFile)) {
+          analysis.changes.added.push({
+            path: 'settings.json',
+            type: 'file'
+          });
+        } else {
+          const templateContent = fs.readFileSync(templateSettingsFile, 'utf8');
+          const projectContent = fs.readFileSync(projectSettingsFile, 'utf8');
+
+          if (templateContent !== projectContent) {
+            analysis.changes.modified.push({
+              path: 'settings.json',
+              type: 'file',
+              templateSize: templateContent.length,
+              projectSize: projectContent.length
+            });
+          } else {
+            analysis.changes.unchanged.push({
+              path: 'settings.json',
+              type: 'file'
+            });
+          }
+        }
+      }
+
       // Find custom files in project that aren't in template
       this.findCustomFiles(
         path.join(projectClaudeDir, 'agents'),
@@ -457,9 +486,13 @@ class UpdateManager extends EventEmitter {
       // Add new files
       for (const item of analysis.changes.added) {
         // Scripts are in repo root, not base-claude
+        // settings.json is in base-claude/.claude
         const isScript = item.path.startsWith('scripts');
+        const isSettings = item.path === 'settings.json';
         const templateFilePath = isScript
           ? path.join(this.templatePath, '..', item.path)
+          : isSettings
+          ? path.join(this.templatePath, '.claude', item.path)
           : path.join(this.templatePath, item.path);
         const projectFilePath = path.join(projectClaudeDir, item.path);
 
@@ -484,9 +517,13 @@ class UpdateManager extends EventEmitter {
       // Update modified files
       for (const item of analysis.changes.modified) {
         // Scripts are in repo root, not base-claude
+        // settings.json is in base-claude/.claude
         const isScript = item.path.startsWith('scripts');
+        const isSettings = item.path === 'settings.json';
         const templateFilePath = isScript
           ? path.join(this.templatePath, '..', item.path)
+          : isSettings
+          ? path.join(this.templatePath, '.claude', item.path)
           : path.join(this.templatePath, item.path);
         const projectFilePath = path.join(projectClaudeDir, item.path);
 

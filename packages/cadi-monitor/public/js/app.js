@@ -22,6 +22,11 @@ class CADIMonitor {
     if (typeof UpdatesManager !== 'undefined') {
       this.updatesManager = new UpdatesManager(this);
     }
+
+    // Initialize AgentActivityManager (if available)
+    if (typeof AgentActivityManager !== 'undefined') {
+      this.agentActivityManager = new AgentActivityManager(this);
+    }
   }
 
   /**
@@ -76,8 +81,13 @@ class CADIMonitor {
 
       case 'statsChanged':
         console.log('Stats changed for', data.projectName);
-        this.addActivityItem('Project statistics updated', data.projectName, data.timestamp);
+        // Skip adding "Project statistics updated" to activity log (too frequent)
         this.loadProjects(); // Refresh project data
+
+        // If the changed project is currently selected, refresh the current view
+        if (this.selectedProject === data.projectId) {
+          this.refreshCurrentView();
+        }
         break;
 
       case 'projectInitialized':
@@ -328,6 +338,11 @@ class CADIMonitor {
     document.getElementById('featuresProjectName').textContent = project.name;
     document.getElementById('contextProjectName').textContent = project.name;
     document.getElementById('errorsProjectName').textContent = project.name;
+
+    const agentsProjectName = document.getElementById('agentsProjectName');
+    if (agentsProjectName) {
+      agentsProjectName.textContent = project.name;
+    }
 
     // Load features
     if (this.currentView === 'features') {
@@ -741,6 +756,37 @@ class CADIMonitor {
   }
 
   /**
+   * Refresh the currently active view
+   */
+  refreshCurrentView() {
+    if (!this.selectedProject) return;
+
+    switch (this.currentView) {
+      case 'features':
+        this.loadFeatures(this.selectedProject);
+        break;
+      case 'context':
+        this.loadContext(this.selectedProject);
+        break;
+      case 'errors':
+        this.loadErrors(this.selectedProject);
+        break;
+      case 'agents':
+        if (this.agentActivityManager) {
+          this.agentActivityManager.loadAgents(this.selectedProject);
+        }
+        break;
+      case 'overview':
+        this.renderOverview();
+        break;
+      case 'activity':
+        this.renderActivityFeed();
+        break;
+      // 'updates' view doesn't auto-refresh - user must click "Check for Updates"
+    }
+  }
+
+  /**
    * Switch view
    */
   switchView(viewName) {
@@ -778,6 +824,8 @@ class CADIMonitor {
       this.renderActivityFeed();
     } else if (viewName === 'errors' && this.selectedProject) {
       this.loadErrors(this.selectedProject);
+    } else if (viewName === 'agents' && this.selectedProject && this.agentActivityManager) {
+      this.agentActivityManager.loadAgents(this.selectedProject);
     }
   }
 

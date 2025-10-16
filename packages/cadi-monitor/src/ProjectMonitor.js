@@ -308,6 +308,164 @@ class ProjectMonitor extends EventEmitter {
   }
 
   /**
+   * Get agent invocations
+   */
+  getAgentInvocations(options = {}) {
+    if (!this.db) return [];
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='agent_invocations'"
+      ).get();
+
+      if (!tableExists) {
+        return [];
+      }
+
+      const {
+        limit = 50,
+        agentType = null,
+        sessionId = null,
+        featureId = null,
+        parentAgent = null
+      } = options;
+
+      let query = `
+        SELECT
+          i.id,
+          i.agent_type,
+          i.agent_prompt,
+          i.agent_description,
+          i.session_id,
+          i.parent_agent,
+          i.feature_id,
+          i.section_id,
+          i.invoked_at,
+          c.completed_at,
+          c.duration_ms,
+          c.success,
+          c.error_message,
+          f.name as feature_name,
+          s.name as section_name
+        FROM agent_invocations i
+        LEFT JOIN agent_completions c ON i.id = c.invocation_id
+        LEFT JOIN features f ON i.feature_id = f.id
+        LEFT JOIN sections s ON i.section_id = s.id
+        WHERE 1=1
+      `;
+
+      const params = [];
+
+      if (agentType) {
+        query += ' AND i.agent_type = ?';
+        params.push(agentType);
+      }
+
+      if (sessionId) {
+        query += ' AND i.session_id = ?';
+        params.push(sessionId);
+      }
+
+      if (featureId) {
+        query += ' AND i.feature_id = ?';
+        params.push(featureId);
+      }
+
+      if (parentAgent) {
+        query += ' AND i.parent_agent = ?';
+        params.push(parentAgent);
+      }
+
+      query += ' ORDER BY i.invoked_at DESC LIMIT ?';
+      params.push(limit);
+
+      return this.db.prepare(query).all(...params);
+    } catch (error) {
+      console.error(`Error getting agent invocations for ${this.id}:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Get agent invocation statistics
+   */
+  getAgentStats() {
+    if (!this.db) return null;
+
+    try {
+      // Check if table exists
+      const tableExists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='agent_invocations'"
+      ).get();
+
+      if (!tableExists) {
+        return {
+          total: 0,
+          byType: {},
+          completed: 0,
+          inProgress: 0,
+          avgDuration: 0,
+          totalDuration: 0
+        };
+      }
+
+      // Total invocations
+      const total = this.db.prepare('SELECT COUNT(*) as count FROM agent_invocations').get();
+
+      // By agent type
+      const byType = this.db.prepare(`
+        SELECT
+          i.agent_type,
+          COUNT(*) as count,
+          AVG(c.duration_ms) as avg_duration,
+          MIN(c.duration_ms) as min_duration,
+          MAX(c.duration_ms) as max_duration
+        FROM agent_invocations i
+        LEFT JOIN agent_completions c ON i.id = c.invocation_id
+        GROUP BY i.agent_type
+        ORDER BY count DESC
+      `).all();
+
+      // Completed vs in progress
+      const completedCount = this.db.prepare(`
+        SELECT COUNT(*) as count
+        FROM agent_invocations i
+        INNER JOIN agent_completions c ON i.id = c.invocation_id
+      `).get();
+
+      // Duration stats
+      const durationStats = this.db.prepare(`
+        SELECT
+          AVG(duration_ms) as avg_duration,
+          SUM(duration_ms) as total_duration
+        FROM agent_completions
+        WHERE duration_ms IS NOT NULL
+      `).get();
+
+      return {
+        total: total.count,
+        byType: byType.reduce((acc, row) => {
+          acc[row.agent_type] = {
+            count: row.count,
+            avgDuration: Math.round(row.avg_duration || 0),
+            minDuration: row.min_duration || 0,
+            maxDuration: row.max_duration || 0
+          };
+          return acc;
+        }, {}),
+        completed: completedCount.count,
+        inProgress: total.count - completedCount.count,
+        avgDuration: Math.round(durationStats.avg_duration || 0),
+        totalDuration: Math.round(durationStats.total_duration || 0)
+      };
+    } catch (error) {
+      console.error(`Error getting agent stats for ${this.id}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Get error log entries
    */
   getErrors(options = {}) {

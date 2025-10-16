@@ -51,6 +51,7 @@
                     <button class="tab-btn" data-view="features">Features</button>
                     <button class="tab-btn" data-view="context">Context</button>
                     <button class="tab-btn" data-view="errors">Errors</button>
+                    <button class="tab-btn" data-view="agents">Agents</button>
                     <button class="tab-btn" data-view="updates">Updates</button>
                     <button class="tab-btn" data-view="activity">Activity</button>
                 </div>
@@ -148,6 +149,30 @@
 
                     <div class="errors-container" id="errorsContainer">
                         <!-- Error log entries will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Agents View -->
+                <div class="view" id="agentsView">
+                    <div class="view-header">
+                        <h2>Agent Invocations</h2>
+                        <div class="view-subtitle" id="agentsProjectName"></div>
+                    </div>
+
+                    <div class="agent-stats" id="agentStats">
+                        <!-- Agent stats will be loaded here -->
+                    </div>
+
+                    <div class="agent-filters">
+                        <select id="agentTypeFilter" class="filter-select">
+                            <option value="">All Types</option>
+                        </select>
+                        <input type="number" id="agentLimitFilter" class="filter-input" placeholder="Limit (default: 50)" min="1" max="200">
+                        <button class="btn-secondary btn-sm" id="loadAgentsBtn">Load</button>
+                    </div>
+
+                    <div class="agents-container" id="agentsContainer">
+                        <!-- Agent invocations will be loaded here -->
                     </div>
                 </div>
 
@@ -285,6 +310,7 @@
         </div>
     </div>
 
+    <script src="/js/agents.js"></script>
     <script src="/js/updates.js"></script>
     <script src="/js/context-loads.js"></script>
     <script src="/js/app.js"></script>

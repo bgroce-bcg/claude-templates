@@ -176,6 +176,28 @@ class MonitorServer {
       res.json({ loads, stats });
     });
 
+    // Get agent invocations for a project
+    this.app.get('/api/projects/:id/agent-invocations', (req, res) => {
+      const monitor = this.projects.get(req.params.id);
+
+      if (!monitor) {
+        return res.status(404).json({ error: 'Project not found' });
+      }
+
+      const options = {
+        limit: parseInt(req.query.limit) || 50,
+        agentType: req.query.type || null,
+        sessionId: req.query.session || null,
+        featureId: req.query.feature ? parseInt(req.query.feature) : null,
+        parentAgent: req.query.parent || null
+      };
+
+      const invocations = monitor.getAgentInvocations(options);
+      const stats = monitor.getAgentStats();
+
+      res.json({ invocations, stats });
+    });
+
     // Get aggregated stats across all projects
     this.app.get('/api/stats', (req, res) => {
       const stats = {
