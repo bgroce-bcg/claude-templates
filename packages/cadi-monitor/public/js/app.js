@@ -131,7 +131,13 @@ class CADIMonitor {
    */
   setupEventListeners() {
     // Refresh button
-    document.getElementById('refreshBtn').addEventListener('click', () => {
+    document.getElementById('refreshBtn').addEventListener('click', (e) => {
+      // Animate refresh icon
+      const icon = e.currentTarget.querySelector('svg');
+      if (window.animationController && icon) {
+        window.animationController.animateRefreshIcon(icon);
+      }
+
       this.loadProjects();
       if (this.selectedProject) {
         this.loadProjectDetails(this.selectedProject);
@@ -413,13 +419,27 @@ class CADIMonitor {
         const sectionsList = document.getElementById(`sections-${featureId}`);
 
         if (sectionsList.classList.contains('expanded')) {
-          sectionsList.classList.remove('expanded');
+          // Collapse with animation
+          if (window.animationController) {
+            window.animationController.animateSectionsCollapse(sectionsList, () => {
+              sectionsList.classList.remove('expanded');
+              sectionsList.innerHTML = '';
+            });
+          } else {
+            sectionsList.classList.remove('expanded');
+            sectionsList.innerHTML = '';
+          }
         } else {
           await this.loadSections(projectId, featureId);
           sectionsList.classList.add('expanded');
         }
       });
     });
+
+    // Animate feature cards entrance
+    if (window.animationController) {
+      window.animationController.animateFeatureCards();
+    }
   }
 
   /**
@@ -462,6 +482,11 @@ class CADIMonitor {
         </div>
       </div>
     `).join('');
+
+    // Animate sections expansion
+    if (window.animationController) {
+      window.animationController.animateSectionsExpand(container);
+    }
   }
 
   /**
@@ -542,6 +567,11 @@ class CADIMonitor {
         </div>
       </div>
     `).join('');
+
+    // Animate context docs entrance
+    if (window.animationController) {
+      window.animationController.animateContextDocs();
+    }
   }
 
   /**
@@ -667,6 +697,12 @@ class CADIMonitor {
         </div>
       `;
     }).join('');
+
+    // Animate error items and stats
+    if (window.animationController) {
+      window.animationController.animateErrorItems();
+      window.animationController.animateStatsCards();
+    }
   }
 
   /**
@@ -750,6 +786,12 @@ class CADIMonitor {
           this.selectProject(projectId);
         });
       });
+
+      // Animate stats and project cards
+      if (window.animationController) {
+        window.animationController.animateStatsCards();
+        window.animationController.animateProjectCards();
+      }
     } catch (error) {
       console.error('Failed to load overview stats:', error);
     }
@@ -790,7 +832,17 @@ class CADIMonitor {
    * Switch view
    */
   switchView(viewName) {
+    const previousView = this.currentView;
     this.currentView = viewName;
+
+    // Find old and new tab buttons for animation
+    const oldTab = document.querySelector(`.tab-btn[data-view="${previousView}"]`);
+    const newTab = document.querySelector(`.tab-btn[data-view="${viewName}"]`);
+
+    // Animate tab switch
+    if (window.animationController && oldTab && newTab) {
+      window.animationController.animateTabSwitch(oldTab, newTab);
+    }
 
     // Update tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -801,14 +853,22 @@ class CADIMonitor {
       }
     });
 
+    // Get old and new views for transition animation
+    const oldView = document.querySelector('.view.active');
+    const newView = document.getElementById(`${viewName}View`);
+
+    // Animate view transition
+    if (window.animationController && oldView && newView && oldView !== newView) {
+      window.animationController.animateViewChange(oldView, newView);
+    }
+
     // Update views
     document.querySelectorAll('.view').forEach(view => {
       view.classList.remove('active');
     });
 
-    const activeView = document.getElementById(`${viewName}View`);
-    if (activeView) {
-      activeView.classList.add('active');
+    if (newView) {
+      newView.classList.add('active');
     }
 
     // Load data for view
@@ -833,15 +893,31 @@ class CADIMonitor {
    * Show add project modal
    */
   showAddProjectModal() {
-    document.getElementById('addProjectModal').classList.add('active');
+    const modal = document.getElementById('addProjectModal');
+    modal.classList.add('active');
+
+    // Animate modal opening
+    if (window.animationController) {
+      window.animationController.animateModalOpen(modal);
+    }
   }
 
   /**
    * Hide add project modal
    */
   hideAddProjectModal() {
-    document.getElementById('addProjectModal').classList.remove('active');
-    document.getElementById('addProjectForm').reset();
+    const modal = document.getElementById('addProjectModal');
+
+    // Animate modal closing
+    if (window.animationController) {
+      window.animationController.animateModalClose(modal, () => {
+        modal.classList.remove('active');
+        document.getElementById('addProjectForm').reset();
+      });
+    } else {
+      modal.classList.remove('active');
+      document.getElementById('addProjectForm').reset();
+    }
   }
 
   /**
@@ -895,15 +971,31 @@ class CADIMonitor {
     document.getElementById('deleteProjectPath').textContent = project.path;
 
     // Show modal
-    document.getElementById('deleteProjectModal').classList.add('active');
+    const modal = document.getElementById('deleteProjectModal');
+    modal.classList.add('active');
+
+    // Animate modal opening
+    if (window.animationController) {
+      window.animationController.animateModalOpen(modal);
+    }
   }
 
   /**
    * Hide delete project modal
    */
   hideDeleteProjectModal() {
-    document.getElementById('deleteProjectModal').classList.remove('active');
-    this.projectToDelete = null;
+    const modal = document.getElementById('deleteProjectModal');
+
+    // Animate modal closing
+    if (window.animationController) {
+      window.animationController.animateModalClose(modal, () => {
+        modal.classList.remove('active');
+        this.projectToDelete = null;
+      });
+    } else {
+      modal.classList.remove('active');
+      this.projectToDelete = null;
+    }
   }
 
   /**
@@ -999,6 +1091,11 @@ class CADIMonitor {
         </div>
       `;
     }).join('');
+
+    // Animate activity items
+    if (window.animationController) {
+      window.animationController.animateActivityItems();
+    }
   }
 
   /**
