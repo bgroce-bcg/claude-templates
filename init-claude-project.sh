@@ -276,20 +276,14 @@ if [ "$USE_NEXT" = true ]; then
     fi
 fi
 
-# Create project directories
+# Create project directories (from manifest)
 echo -e "${BLUE}Creating project directories...${NC}"
 
-DIRECTORIES=(
-    "docs/backend"
-    "docs/frontend"
-    "docs/plans"
-    "docs/features"
-)
-
-for dir in "${DIRECTORIES[@]}"; do
+# Read directories from manifest
+while IFS= read -r dir; do
     mkdir -p "$TARGET_DIR/$dir"
     echo -e "${GREEN}✓ Created $dir${NC}"
-done
+done < <(node "$SCRIPT_DIR/manifest-helper.js" directories)
 
 # Initialize project database
 echo -e "${BLUE}Initializing project database...${NC}"
@@ -301,124 +295,23 @@ if ! command -v sqlite3 &> /dev/null; then
     echo -e "${YELLOW}Warning: sqlite3 not found. Please install sqlite3 to use database features.${NC}"
     echo -e "${YELLOW}Install sqlite3 and re-run this script to create the database.${NC}"
 else
-    # Create the database with schema v5
-    sqlite3 "$DB_PATH" << 'EOF'
--- Features table
-CREATE TABLE IF NOT EXISTS features (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    planning_doc_path TEXT NOT NULL,
-    summary TEXT,
-    status TEXT CHECK(status IN ('planning', 'ready', 'in_progress', 'completed')) DEFAULT 'planning',
-    priority INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    started_at TIMESTAMP,
-    completed_at TIMESTAMP
-);
-
--- Sections table
-CREATE TABLE IF NOT EXISTS sections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    feature_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    objectives TEXT,
-    verification_criteria TEXT,
-    order_index INTEGER NOT NULL,
-    status TEXT CHECK(status IN ('pending', 'in_progress', 'completed')) DEFAULT 'pending',
-    depends_on INTEGER,
-    estimated_hours REAL,
-    actual_hours REAL,
-    started_at TIMESTAMP,
-    completed_at TIMESTAMP,
-    notes TEXT,
-    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
-    FOREIGN KEY (depends_on) REFERENCES sections(id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_sections_feature_status ON sections(feature_id, status);
-CREATE INDEX IF NOT EXISTS idx_sections_order ON sections(feature_id, order_index);
-
--- Context documents table
-CREATE TABLE IF NOT EXISTS context_documents (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_path TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    category TEXT NOT NULL,
-    summary TEXT,
-    tags TEXT,
-    feature_id INTEGER,
-    estimated_tokens INTEGER,
-    last_indexed TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    file_modified TIMESTAMP,
-    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_docs_category ON context_documents(category);
-CREATE INDEX IF NOT EXISTS idx_docs_feature ON context_documents(feature_id);
-
--- Error log table
-CREATE TABLE IF NOT EXISTS error_log (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    agent_name TEXT NOT NULL,
-    command_name TEXT,
-    feature_id INTEGER,
-    section_id INTEGER,
-    error_type TEXT NOT NULL,
-    error_message TEXT NOT NULL,
-    error_context TEXT,
-    severity TEXT CHECK(severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
-    resolved BOOLEAN DEFAULT 0,
-    resolution TEXT,
-    resolved_at TIMESTAMP,
-    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
-    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_error_log_timestamp ON error_log(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_error_log_feature ON error_log(feature_id);
-CREATE INDEX IF NOT EXISTS idx_error_log_severity ON error_log(severity);
-CREATE INDEX IF NOT EXISTS idx_error_log_resolved ON error_log(resolved);
-
--- Context loads table (v5)
-CREATE TABLE IF NOT EXISTS context_loads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    agent_name TEXT NOT NULL,
-    feature_id INTEGER,
-    section_id INTEGER,
-    request TEXT NOT NULL,
-    category TEXT,
-    tags TEXT,
-    document_ids TEXT,
-    document_count INTEGER NOT NULL,
-    total_tokens INTEGER,
-    duration_ms INTEGER,
-    FOREIGN KEY (feature_id) REFERENCES features(id) ON DELETE CASCADE,
-    FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE
-);
-
-CREATE INDEX IF NOT EXISTS idx_context_loads_timestamp ON context_loads(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_context_loads_agent ON context_loads(agent_name);
-CREATE INDEX IF NOT EXISTS idx_context_loads_feature ON context_loads(feature_id);
-CREATE INDEX IF NOT EXISTS idx_context_loads_section ON context_loads(section_id);
-
--- Schema version table
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER NOT NULL,
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Insert initial schema version (v5)
-INSERT INTO schema_version (version) VALUES (5);
-EOF
-
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Created project.db${NC}"
+    # Check if node is available for manifest helper
+    if ! command -v node &> /dev/null; then
+        echo -e "${YELLOW}Warning: node not found. Cannot read schema from manifest.${NC}"
+        echo -e "${YELLOW}Please install Node.js to use manifest-based initialization.${NC}"
     else
-        echo -e "${YELLOW}Warning: Failed to create project.db${NC}"
-        echo -e "${YELLOW}Check that sqlite3 is installed and working properly.${NC}"
+        # Generate SQL from manifest and create database
+        SCHEMA_VERSION=$(node "$SCRIPT_DIR/manifest-helper.js" schema-version)
+        SQL=$(node "$SCRIPT_DIR/manifest-helper.js" sql)
+
+        echo "$SQL" | sqlite3 "$DB_PATH"
+
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ Created project.db (schema v${SCHEMA_VERSION})${NC}"
+        else
+            echo -e "${YELLOW}Warning: Failed to create project.db${NC}"
+            echo -e "${YELLOW}Check that sqlite3 is installed and working properly.${NC}"
+        fi
     fi
 fi
 
