@@ -25,21 +25,58 @@ Unified command that creates a feature plan, breaks it into sections, and builds
 **CRITICAL: Use CADI Project Database**
 All database operations MUST use the CADI project database located at `.claude/project.db`.
 
-### Step 1: Load Context
+**CRITICAL: Parallel Section Execution**
+This command builds sections in parallel when dependencies allow:
+- Multiple `plan-section-builder` agents run simultaneously
+- Database coordinates execution via `sections.status` and `sections.depends_on`
+- Sections with no dependencies start immediately
+- Dependent sections wait for prerequisites to complete
+- See `docs/design/PARALLEL_SECTION_BUILDING.md` for full design details
 
-Load project context from database:
-```bash
-# Launch context-loader agent for backend
-context-loader request="backend architecture and patterns" category="backend" list_only="false"
+### Step 1: Discover and Load Relevant Context (Selective Loading)
 
-# Launch context-loader agent for frontend
-context-loader request="frontend architecture and patterns" category="frontend" list_only="false"
-```
+**IMPORTANT:** Use selective loading to avoid loading unnecessary documentation.
 
-If context-loader agent is not available or fails, fallback to:
+1. **Gather initial requirements** (quick analysis):
+   - Parse arguments: FEATURE = first argument, DESCRIPTION = remaining arguments
+   - Determine if feature is likely backend-only, frontend-only, or full-stack based on name/description
+   - Examples:
+     - "api-validation" → backend-only
+     - "dashboard-widgets" → frontend-only
+     - "user-authentication" → full-stack
+
+2. **Discover available documentation**:
+
+   **If feature appears backend-only**:
+   ```bash
+   context-loader request="backend architecture and patterns" category="backend" list_only="true"
+   ```
+
+   **If feature appears frontend-only**:
+   ```bash
+   context-loader request="frontend architecture and patterns" category="frontend" list_only="true"
+   ```
+
+   **If feature appears full-stack or unclear**:
+   ```bash
+   context-loader request="backend architecture and patterns" category="backend" list_only="true"
+   context-loader request="frontend architecture and patterns" category="frontend" list_only="true"
+   ```
+
+3. **Review and load only relevant docs**:
+   - Review the returned document list (IDs, titles, summaries, token estimates)
+   - Identify which specific documents are relevant to the planned feature
+   - Load only those documents:
+   ```bash
+   context-loader request="load specific documents" ids="1,2,5" list_only="false"
+   ```
+
+**Fallback:** If context-loader agent is not available or fails, use:
 ```bash
 /load-context both
 ```
+
+**Benefits:** Planning phase only needs high-level architecture docs, not detailed implementation guides. Selective loading saves tokens.
 
 ### Step 2: Gather Requirements
 
@@ -147,51 +184,82 @@ Display plan overview:
 /plan-status FEATURE
 ```
 
-### Step 6: Build All Sections
+### Step 6: Build All Sections (Parallel Execution)
 
-Loop through sections in order:
+**CRITICAL**: Use parallel execution to build multiple sections simultaneously when dependencies allow.
 
-**Get next pending section:**
+Loop until all sections are completed:
+
+**Query for ALL buildable sections:**
 ```sql
 SELECT s.id, s.name FROM sections s
 WHERE s.feature_id = ? AND s.status = 'pending'
 AND (s.depends_on IS NULL OR s.depends_on IN
     (SELECT id FROM sections WHERE status = 'completed'))
-ORDER BY s.order_index LIMIT 1;
+ORDER BY s.order_index;
 ```
 
-**Mark section in progress:**
+**If no buildable sections found:**
+- Check if any sections are still `in_progress` (waiting for agents to finish)
+- Check if any sections are stuck in `pending` (potential circular dependency)
+- If all done, exit loop
+- If stuck, log error and report to user
+
+**Mark ALL buildable sections as in_progress:**
+For each buildable section:
 ```sql
 UPDATE sections SET status = 'in_progress', started_at = CURRENT_TIMESTAMP
 WHERE id = ?;
 ```
 
-**Build section:**
-Launch `plan-section-builder` agent with:
+**Launch ALL section builders IN PARALLEL:**
+**CRITICAL**: You MUST launch all agents in a SINGLE message with multiple Task tool calls.
+
+Example for 3 buildable sections:
+```
+I'll now build sections 1, 2, and 3 in parallel.
+
+[Task tool call for section 1]
+[Task tool call for section 2]
+[Task tool call for section 3]
+```
+
+Each agent receives:
 - section_id: {section_id}
 - planning_document_path: docs/plans/{FEATURE}/PLANNING.md
 
-**Verify completion:**
+**Wait for all agents to complete** (automatic - Claude Code handles this)
+
+**Verify completions:**
+For each section that was launched:
 ```sql
-SELECT status FROM sections WHERE id = ?;
+SELECT status, notes FROM sections WHERE id = ?;
 ```
 
-If still 'in_progress', manually mark as completed.
+If any section is still 'in_progress':
+- Log error to error_log table
+- Report to user with agent details
+- Ask user: retry, skip, or abort?
 
-**Create commit (optional):**
-After each section completes, optionally create a commit:
+**Create batch commit (optional):**
+After each parallel batch completes successfully:
 ```bash
 git add .
-git commit -m "Implement {feature-name}: {section-name}
+git commit -m "Implement {feature-name}: {comma-separated section names}
 
-{brief description of what was implemented}
+{brief description of what was implemented in this batch}
+
+Sections completed:
+- {section-1-name}
+- {section-2-name}
+- {section-n-name}
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
 Co-Authored-By: Claude <noreply@anthropic.com>"
 ```
 
-**Repeat** until all sections are completed.
+**Repeat** - Next iteration will find newly unblocked sections and launch them in parallel.
 
 ### Step 7: Quality Check
 
@@ -256,6 +324,17 @@ Run `/plan-status {FEATURE}` to see detailed metrics.
 - Report to user with details
 - Ask if they want to skip section or retry
 
+**Circular dependency detected:**
+- Query for stuck sections: `SELECT id, name, depends_on FROM sections WHERE feature_id = ? AND status = 'pending'`
+- Check if no sections are buildable but some are pending
+- Report dependency chain to user
+- Ask user to fix PLANNING.md and re-insert sections
+
+**Parallel execution stalls:**
+- If multiple iterations with no progress (same sections pending)
+- Check for sections stuck in 'in_progress' (agents may have crashed)
+- Offer to reset stuck sections to 'pending' and retry
+
 **Tests fail:**
 - Report failures
 - Ask user if they want to continue or fix first
@@ -286,16 +365,20 @@ Asks for description, creates:
 - Section 2: "profile-frontend" (UI components)
 - Builds both sequentially
 
-### Example 3: Complex Feature (3 Sections)
+### Example 3: Complex Feature (3 Sections with Dependencies)
 ```bash
 /plan multi-tenant "Add multi-tenant support with isolation"
 ```
 
 Creates:
-- Section 1: "tenant-data-model"
-- Section 2: "tenant-ui"
-- Section 3: "tenant-permissions"
-- Builds all three in order
+- Section 1: "tenant-data-model" (depends_on: NULL)
+- Section 2: "tenant-ui" (depends_on: 1)
+- Section 3: "tenant-permissions" (depends_on: NULL)
+
+Execution:
+- **Iteration 1**: Launches sections 1 and 3 in parallel (no dependencies)
+- **Iteration 2**: After 1 completes, launches section 2 (dependency satisfied)
+- Total time: ~2 iterations instead of 3 sequential
 
 ## Notes
 
