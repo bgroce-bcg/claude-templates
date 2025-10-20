@@ -419,6 +419,20 @@ class MonitorServer {
       res.json(config);
     });
 
+    // Get manifest data (system configuration)
+    this.app.get('/api/manifest', (req, res) => {
+      if (!this.updateManager) {
+        return res.status(503).json({ error: 'Update manager not configured' });
+      }
+
+      try {
+        const manifestData = this.updateManager.getManifestData();
+        res.json(manifestData);
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     this.app.post('/api/config/projects', async (req, res) => {
       try {
         const { id, name, path, color, enabled } = req.body;

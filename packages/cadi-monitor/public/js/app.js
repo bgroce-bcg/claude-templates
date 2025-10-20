@@ -1048,6 +1048,9 @@ class CADIMonitor {
       case 'activity':
         this.renderActivityFeed();
         break;
+      case 'system':
+        this.loadSystemConfig();
+        break;
       // 'updates' view doesn't auto-refresh - user must click "Check for Updates"
     }
   }
@@ -1489,6 +1492,164 @@ class CADIMonitor {
     this.addActivityItem(`Feature ${data.featureName} moved to ${data.newStatus}`,
                          this.getProjectName(data.projectId),
                          new Date().toISOString());
+  }
+
+  /**
+   * Load and render system configuration from manifest
+   */
+  async loadSystemConfig() {
+    const container = document.getElementById('systemContainer');
+
+    try {
+      const response = await fetch('/api/manifest');
+      if (!response.ok) {
+        throw new Error('Failed to load manifest data');
+      }
+
+      const manifest = await response.json();
+      this.renderSystemConfig(manifest);
+    } catch (error) {
+      console.error('Failed to load system config:', error);
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">⚠️</div>
+          <div class="empty-state-message">Failed to load system configuration</div>
+          <div class="empty-state-hint">${this.escapeHtml(error.message)}</div>
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Render system configuration UI
+   */
+  renderSystemConfig(manifest) {
+    const container = document.getElementById('systemContainer');
+
+    container.innerHTML = `
+      <div class="system-config">
+        <!-- Summary Stats -->
+        <div class="stats-grid" style="margin-bottom: 2rem;">
+          <div class="stat-card">
+            <div class="stat-label">Schema Version</div>
+            <div class="stat-value">${manifest.schemaVersion}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Database Tables</div>
+            <div class="stat-value">${manifest.summary.tableCount}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Migrations</div>
+            <div class="stat-value">${manifest.summary.migrationCount}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Directories</div>
+            <div class="stat-value">${manifest.summary.directoryCount}</div>
+          </div>
+        </div>
+
+        <!-- File Structure -->
+        <div class="system-section">
+          <h3>File Structure</h3>
+          <div class="system-cards">
+            <div class="system-card">
+              <h4>Base Claude Files</h4>
+              <p><strong>Source:</strong> ${this.escapeHtml(manifest.fileStructure.baseClaude.source)}</p>
+              <p><strong>Destination:</strong> ${this.escapeHtml(manifest.fileStructure.baseClaude.destination)}</p>
+              <p><strong>Includes:</strong></p>
+              <ul>
+                ${manifest.fileStructure.baseClaude.include.map(pattern =>
+                  `<li><code>${this.escapeHtml(pattern)}</code></li>`
+                ).join('')}
+              </ul>
+            </div>
+            <div class="system-card">
+              <h4>Scripts</h4>
+              <p><strong>Source:</strong> ${this.escapeHtml(manifest.fileStructure.scripts.source)}</p>
+              <p><strong>Destination:</strong> ${this.escapeHtml(manifest.fileStructure.scripts.destination)}</p>
+              <p><strong>Includes:</strong></p>
+              <ul>
+                ${manifest.fileStructure.scripts.include.map(pattern =>
+                  `<li><code>${this.escapeHtml(pattern)}</code></li>`
+                ).join('')}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categorization Rules -->
+        <div class="system-section">
+          <h3>File Categorization</h3>
+          <div class="system-cards">
+            <div class="system-card">
+              <h4>Tracked Extensions</h4>
+              <div class="badge-list">
+                ${manifest.categorization.trackedExtensions.map(ext =>
+                  `<span class="badge badge-info">${this.escapeHtml(ext)}</span>`
+                ).join('')}
+              </div>
+            </div>
+            <div class="system-card">
+              <h4>CADI-Managed Paths</h4>
+              <p class="help-text">These paths are always updated from the template</p>
+              <ul>
+                ${manifest.categorization.cadiManagedPaths.map(path =>
+                  `<li><code>${this.escapeHtml(path)}</code></li>`
+                ).join('')}
+              </ul>
+            </div>
+            <div class="system-card">
+              <h4>Custom File Paths</h4>
+              <p class="help-text">These paths are preserved during updates</p>
+              <ul>
+                ${manifest.categorization.customFilePaths.map(path =>
+                  `<li><code>${this.escapeHtml(path)}</code></li>`
+                ).join('')}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <!-- Directory Structure -->
+        <div class="system-section">
+          <h3>Directory Structure</h3>
+          <p class="help-text">Directories automatically created during project initialization</p>
+          <div class="system-card">
+            <ul>
+              ${manifest.directories.map(dir =>
+                `<li><code>${this.escapeHtml(dir)}</code></li>`
+              ).join('')}
+            </ul>
+          </div>
+        </div>
+
+        <!-- Database Schema -->
+        <div class="system-section">
+          <h3>Database Schema</h3>
+          <div class="system-cards">
+            ${Object.entries(manifest.schema.tables).map(([tableName, table]) => `
+              <div class="system-card">
+                <h4>${this.escapeHtml(tableName)}</h4>
+                <p><strong>Columns:</strong></p>
+                <ul style="font-size: 0.875rem; font-family: monospace;">
+                  ${table.columns.map(col =>
+                    `<li>${this.escapeHtml(col)}</li>`
+                  ).join('')}
+                </ul>
+                ${table.indexes && table.indexes.length > 0 ? `
+                  <p><strong>Indexes:</strong></p>
+                  <ul style="font-size: 0.875rem; font-family: monospace;">
+                    ${table.indexes.map(idx =>
+                      `<li>${this.escapeHtml(idx)}</li>`
+                    ).join('')}
+                  </ul>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   /**

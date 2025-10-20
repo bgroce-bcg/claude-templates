@@ -54,6 +54,7 @@
                     <button class="tab-btn" data-view="agents">Agents</button>
                     <button class="tab-btn" data-view="updates">Updates</button>
                     <button class="tab-btn" data-view="activity">Activity</button>
+                    <button class="tab-btn" data-view="system">System</button>
                 </div>
                 <!-- Overview View -->
                 <div class="view active" id="overviewView">
@@ -183,6 +184,7 @@
                 <div class="view" id="updatesView">
                     <div class="view-header">
                         <h2>System Updates</h2>
+                        <div class="view-subtitle">Checks projects against cadi-manifest.js configuration</div>
                         <div class="view-actions">
                             <button class="btn-secondary" id="checkAllUpdatesBtn">
                                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="margin-right: 0.5rem;">
@@ -211,6 +213,18 @@
 
                     <div class="activity-feed" id="activityFeed">
                         <!-- Activity items will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- System View -->
+                <div class="view" id="systemView">
+                    <div class="view-header">
+                        <h2>System Configuration</h2>
+                        <div class="view-subtitle">CADI Manifest - Single Source of Truth</div>
+                    </div>
+
+                    <div id="systemContainer">
+                        <!-- System/manifest data will be loaded here -->
                     </div>
                 </div>
             </div>

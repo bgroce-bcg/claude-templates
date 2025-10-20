@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
 const SchemaManager = require('./SchemaManager');
+const ManifestReader = require('./ManifestReader');
 
 /**
  * Manages safe updates to CADI projects
@@ -9,15 +10,20 @@ const SchemaManager = require('./SchemaManager');
  * - Creates backups before updating
  * - Preserves custom files
  * - Allows rollback on failure
+ * - Uses cadi-manifest.js as single source of truth
  */
 class UpdateManager extends EventEmitter {
-  constructor(templatePath) {
+  constructor(templatePath, manifestPath = null) {
     super();
 
     // Path to base-claude template (e.g., /home/user/claude-templates/base-claude)
     this.templatePath = templatePath;
     this.backupDir = '.claude-backup';
     this.schemaManager = new SchemaManager();
+
+    // Load manifest - if not provided, ManifestReader will find it automatically
+    this.manifestReader = new ManifestReader(manifestPath);
+    this.manifest = this.manifestReader.manifest;
   }
 
   /**
@@ -199,15 +205,8 @@ class UpdateManager extends EventEmitter {
         // Recurse into subdirectory
         this.analyzeDirectory(templatePath, projectPath, relPath, analysis);
       } else if (entry.isFile()) {
-        // Check if this is a file we should track
-        const isMarkdown = entry.name.endsWith('.md');
-        const isScript = relativePath.startsWith('scripts') && (
-          entry.name.endsWith('.js') ||
-          entry.name.endsWith('.sh') ||
-          entry.name.endsWith('.py')
-        );
-
-        if (isMarkdown || isScript) {
+        // Use manifest to check if this is a file we should track
+        if (this.manifestReader.shouldTrackFile(entry.name)) {
           // Compare files
           if (!fs.existsSync(projectPath)) {
             // New file
@@ -261,15 +260,8 @@ class UpdateManager extends EventEmitter {
           analysis
         );
       } else if (entry.isFile()) {
-        // Check if this is a file we should track
-        const isMarkdown = entry.name.endsWith('.md');
-        const isScript = relativePath.startsWith('scripts') && (
-          entry.name.endsWith('.js') ||
-          entry.name.endsWith('.sh') ||
-          entry.name.endsWith('.py')
-        );
-
-        if (isMarkdown || isScript) {
+        // Use manifest to check if this is a file we should track
+        if (this.manifestReader.shouldTrackFile(entry.name)) {
           // Check if file exists in template
           if (!fs.existsSync(templatePath)) {
             analysis.changes.custom.push({
@@ -305,26 +297,16 @@ class UpdateManager extends EventEmitter {
           analysis
         );
       } else if (entry.isFile()) {
-        // Check if this is a file we should track
-        const isMarkdown = entry.name.endsWith('.md');
-        const isScript = relativePath.startsWith('scripts') && (
-          entry.name.endsWith('.js') ||
-          entry.name.endsWith('.sh') ||
-          entry.name.endsWith('.py')
-        );
-
-        if (isMarkdown || isScript) {
+        // Use manifest to check if this is a file we should track
+        if (this.manifestReader.shouldTrackFile(entry.name)) {
           // Check if file exists in template
           if (!fs.existsSync(templatePath)) {
-            // File doesn't exist in template - check if it's CADI-managed or custom
-            const isCadiPath = relPath.includes('/cadi/') ||
-                             relPath.includes('\\cadi\\') ||
-                             relPath.startsWith('scripts/') ||
-                             relPath.startsWith('scripts\\');
+            // File doesn't exist in template - check if it's CADI-managed using manifest
+            const isCadiManaged = this.manifestReader.isCadiManaged(relPath);
 
             // Only mark for removal if it's a CADI-managed path
-            // Custom files (not in /cadi/ or template scripts) should be preserved
-            if (isCadiPath) {
+            // Custom files should be preserved
+            if (isCadiManaged) {
               // Double-check it's not already marked as custom
               const isCustom = analysis.changes.custom.some(c => c.path === relPath);
               if (!isCustom) {
@@ -725,6 +707,25 @@ class UpdateManager extends EventEmitter {
     }
 
     return size;
+  }
+
+  /**
+   * Get manifest data for UI display
+   */
+  getManifestData() {
+    return {
+      schemaVersion: this.manifest.schemaVersion,
+      schema: this.manifest.schema,
+      directories: this.manifest.directories,
+      fileStructure: this.manifest.files,
+      categorization: {
+        trackedExtensions: this.manifest.categorization.trackedExtensions,
+        cadiManagedPaths: this.manifest.categorization.cadiManagedPaths,
+        customFilePaths: this.manifest.categorization.customFilePaths
+      },
+      hooks: this.manifest.hooks,
+      summary: this.manifestReader.getSummary()
+    };
   }
 }
 
