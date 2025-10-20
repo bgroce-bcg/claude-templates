@@ -4,6 +4,7 @@ class AgentActivityManager {
     this.cadiMonitor = cadiMonitor;
     this.currentProjectId = null;
     this.agentTypes = new Set();
+    this.expandedCards = new Set(); // Track which cards are expanded
 
     this.init();
   }
@@ -125,14 +126,19 @@ class AgentActivityManager {
       return;
     }
 
-    container.innerHTML = invocations.map(inv => {
+    container.innerHTML = invocations.map((inv, index) => {
       const invokedTime = new Date(inv.invoked_at);
       const timeStr = invokedTime.toLocaleString();
       const isCompleted = inv.completed_at != null;
       const statusClass = isCompleted ? 'completed' : 'in-progress';
+      // Use invocation_id to create stable IDs that persist across refreshes
+      const cardKey = `agent-${inv.invocation_id}`;
+      const cardId = `agent-card-${inv.invocation_id}`;
+      const detailsId = `agent-details-${inv.invocation_id}`;
+      const isExpanded = this.expandedCards.has(cardKey);
 
       return `
-        <div class="agent-card ${statusClass}">
+        <div class="agent-card ${statusClass}" id="${cardId}">
           <div class="agent-header">
             <div class="agent-type-badge">${this.escapeHtml(inv.agent_type)}</div>
             <div class="agent-time">${timeStr}</div>
@@ -176,6 +182,7 @@ class AgentActivityManager {
                   <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
                 </svg>
                 Completed in ${inv.duration_ms}ms
+                ${inv.success === 0 ? '<span style="color: var(--error); margin-left: 0.5rem;">(Failed)</span>' : ''}
               </span>
             ` : `
               <span class="agent-status in-progress">
@@ -187,15 +194,86 @@ class AgentActivityManager {
               </span>
             `}
 
+            <button class="btn-link agent-expand-btn" data-details-id="${detailsId}" data-card-key="${cardKey}">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" class="expand-icon" style="transform: rotate(${isExpanded ? '180' : '0'}deg);">
+                <path d="M12.78 5.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 6.28a.75.75 0 0 1 1.06-1.06L8 8.94l3.72-3.72a.75.75 0 0 1 1.06 0Z"/>
+              </svg>
+              ${isExpanded ? 'Hide Details' : 'Details'}
+            </button>
+          </div>
+
+          <div class="agent-details" id="${detailsId}" style="display: ${isExpanded ? 'block' : 'none'};">
+            <div class="agent-details-section">
+              <h4>Agent Prompt</h4>
+              <pre class="agent-details-code">${this.escapeHtml(inv.agent_prompt || 'No prompt available')}</pre>
+            </div>
+
+            ${inv.tool_response ? `
+              <div class="agent-details-section">
+                <h4>Tool Response</h4>
+                <pre class="agent-details-code">${this.escapeHtml(inv.tool_response)}</pre>
+              </div>
+            ` : ''}
+
+            ${inv.error_message ? `
+              <div class="agent-details-section error">
+                <h4>Error Message</h4>
+                <pre class="agent-details-code">${this.escapeHtml(inv.error_message)}</pre>
+              </div>
+            ` : ''}
+
             ${inv.session_id ? `
-              <span class="agent-session" title="Session ID: ${inv.session_id}">
-                Session: ${inv.session_id.substring(0, 8)}...
-              </span>
+              <div class="agent-details-section">
+                <h4>Session ID</h4>
+                <code>${this.escapeHtml(inv.session_id)}</code>
+              </div>
+            ` : ''}
+
+            ${inv.tool_name ? `
+              <div class="agent-details-section">
+                <h4>Tool Used</h4>
+                <code>${this.escapeHtml(inv.tool_name)}</code>
+              </div>
             ` : ''}
           </div>
         </div>
       `;
     }).join('');
+
+    // Add click handlers for expand buttons
+    container.querySelectorAll('.agent-expand-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const detailsId = btn.dataset.detailsId;
+        const cardKey = btn.dataset.cardKey;
+        const detailsEl = document.getElementById(detailsId);
+        const icon = btn.querySelector('.expand-icon');
+
+        const isCurrentlyExpanded = detailsEl.style.display !== 'none';
+
+        if (!isCurrentlyExpanded) {
+          // Expand
+          detailsEl.style.display = 'block';
+          icon.style.transform = 'rotate(180deg)';
+          // Update button content by replacing only the text node
+          const textNode = Array.from(btn.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
+          if (textNode) {
+            textNode.textContent = 'Hide Details';
+          }
+          this.expandedCards.add(cardKey); // Track expanded state
+        } else {
+          // Collapse
+          detailsEl.style.display = 'none';
+          icon.style.transform = 'rotate(0deg)';
+          // Update button content by replacing only the text node
+          const textNode = Array.from(btn.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
+          if (textNode) {
+            textNode.textContent = 'Details';
+          }
+          this.expandedCards.delete(cardKey); // Remove from expanded state
+        }
+      });
+    });
   }
 
   escapeHtml(text) {

@@ -75,6 +75,9 @@
                     <div class="view-header">
                         <h2>Features</h2>
                         <div class="view-subtitle" id="featuresProjectName"></div>
+                        <div class="view-actions">
+                            <button class="btn-primary" id="createFeatureBtn">+ Create Feature</button>
+                        </div>
                     </div>
 
                     <div class="features-container" id="featuresContainer">
@@ -310,8 +313,69 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
-    <script src="/js/animations.js"></script>
+    <!-- Create Feature Modal -->
+    <div class="modal" id="createFeatureModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Create New Feature</h3>
+                <button class="modal-close" id="closeCreateFeatureModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="createFeatureForm">
+                    <div class="form-group">
+                        <label for="featureName">Feature Name</label>
+                        <input type="text" id="featureName" name="featureName" required placeholder="user-authentication">
+                        <small>Lowercase, alphanumeric, and hyphens (kebab-case)</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="featureDescription">Description</label>
+                        <textarea id="featureDescription" name="featureDescription" rows="3" placeholder="Brief description of what this feature does..."></textarea>
+                        <small>Optional: 1-2 sentence description of the feature</small>
+                    </div>
+                    <div id="featureCreationOutputSection" style="display: none;">
+                        <label>Output</label>
+                        <pre id="featureCreationOutput" style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 0.5rem; max-height: 300px; overflow-y: auto; font-size: 0.875rem;"></pre>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="cancelCreateFeatureBtn">Cancel</button>
+                        <button type="submit" class="btn-primary" id="createFeatureSubmitBtn">Create Feature</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feature Details Modal -->
+    <div class="modal" id="featureDetailsModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 id="featureDetailsTitle">Feature Details</h3>
+                <button class="modal-close" id="closeFeatureDetailsModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="featureDetailsContent">
+                    <div class="feature-details-summary" id="featureDetailsSummary"></div>
+
+                    <!-- Live Output Section -->
+                    <div id="featureLiveOutputSection" style="display: none; margin-bottom: 1.5rem;">
+                        <h4 style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                            <span class="active-process-indicator"></span>
+                            Live Output
+                        </h4>
+                        <pre id="featureLiveOutput" style="background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 0.5rem; max-height: 300px; overflow-y: auto; font-size: 0.8125rem; line-height: 1.5; font-family: 'Monaco', 'Courier New', monospace;"></pre>
+                    </div>
+
+                    <div class="feature-details-sections">
+                        <h4>Sections</h4>
+                        <div id="featureDetailsSections">
+                            <!-- Sections will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/js/agents.js"></script>
     <script src="/js/updates.js"></script>
     <script src="/js/context-loads.js"></script>

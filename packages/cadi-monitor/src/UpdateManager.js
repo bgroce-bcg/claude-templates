@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
 const SchemaManager = require('./SchemaManager');
-const ManifestReader = require('./ManifestReader');
 
 /**
  * Manages safe updates to CADI projects
@@ -10,18 +9,15 @@ const ManifestReader = require('./ManifestReader');
  * - Creates backups before updating
  * - Preserves custom files
  * - Allows rollback on failure
- *
- * Now uses cadi-manifest.js for file tracking rules
  */
 class UpdateManager extends EventEmitter {
-  constructor(templatePath, manifestPath = null) {
+  constructor(templatePath) {
     super();
 
     // Path to base-claude template (e.g., /home/user/claude-templates/base-claude)
     this.templatePath = templatePath;
     this.backupDir = '.claude-backup';
-    this.schemaManager = new SchemaManager(manifestPath);
-    this.manifestReader = new ManifestReader(manifestPath);
+    this.schemaManager = new SchemaManager();
   }
 
   /**
@@ -75,8 +71,8 @@ class UpdateManager extends EventEmitter {
         );
       }
 
-      // Analyze scripts (scripts are in repo root, not base-claude)
-      const templateScriptsDir = path.join(this.templatePath, '../scripts');
+      // Analyze scripts (scripts are in base-claude/.claude/scripts)
+      const templateScriptsDir = path.join(this.templatePath, '.claude/scripts');
       if (fs.existsSync(templateScriptsDir)) {
         this.analyzeDirectory(
           templateScriptsDir,
@@ -130,8 +126,8 @@ class UpdateManager extends EventEmitter {
         analysis
       );
 
-      // Check for custom scripts (using same templateScriptsDir from above)
-      const scriptsTemplateDir = path.join(this.templatePath, '../scripts');
+      // Check for custom scripts (scripts are in base-claude/.claude/scripts)
+      const scriptsTemplateDir = path.join(this.templatePath, '.claude/scripts');
       this.findCustomFiles(
         path.join(projectClaudeDir, 'scripts'),
         scriptsTemplateDir,
@@ -203,8 +199,15 @@ class UpdateManager extends EventEmitter {
         // Recurse into subdirectory
         this.analyzeDirectory(templatePath, projectPath, relPath, analysis);
       } else if (entry.isFile()) {
-        // Check if this is a file we should track (using manifest rules)
-        if (this.manifestReader.shouldTrackFile(entry.name)) {
+        // Check if this is a file we should track
+        const isMarkdown = entry.name.endsWith('.md');
+        const isScript = relativePath.startsWith('scripts') && (
+          entry.name.endsWith('.js') ||
+          entry.name.endsWith('.sh') ||
+          entry.name.endsWith('.py')
+        );
+
+        if (isMarkdown || isScript) {
           // Compare files
           if (!fs.existsSync(projectPath)) {
             // New file
@@ -258,8 +261,15 @@ class UpdateManager extends EventEmitter {
           analysis
         );
       } else if (entry.isFile()) {
-        // Check if this is a file we should track (using manifest rules)
-        if (this.manifestReader.shouldTrackFile(entry.name)) {
+        // Check if this is a file we should track
+        const isMarkdown = entry.name.endsWith('.md');
+        const isScript = relativePath.startsWith('scripts') && (
+          entry.name.endsWith('.js') ||
+          entry.name.endsWith('.sh') ||
+          entry.name.endsWith('.py')
+        );
+
+        if (isMarkdown || isScript) {
           // Check if file exists in template
           if (!fs.existsSync(templatePath)) {
             analysis.changes.custom.push({
@@ -295,12 +305,22 @@ class UpdateManager extends EventEmitter {
           analysis
         );
       } else if (entry.isFile()) {
-        // Check if this is a file we should track (using manifest rules)
-        if (this.manifestReader.shouldTrackFile(entry.name)) {
+        // Check if this is a file we should track
+        const isMarkdown = entry.name.endsWith('.md');
+        const isScript = relativePath.startsWith('scripts') && (
+          entry.name.endsWith('.js') ||
+          entry.name.endsWith('.sh') ||
+          entry.name.endsWith('.py')
+        );
+
+        if (isMarkdown || isScript) {
           // Check if file exists in template
           if (!fs.existsSync(templatePath)) {
             // File doesn't exist in template - check if it's CADI-managed or custom
-            const isCadiPath = this.manifestReader.isCadiManaged(relPath);
+            const isCadiPath = relPath.includes('/cadi/') ||
+                             relPath.includes('\\cadi\\') ||
+                             relPath.startsWith('scripts/') ||
+                             relPath.startsWith('scripts\\');
 
             // Only mark for removal if it's a CADI-managed path
             // Custom files (not in /cadi/ or template scripts) should be preserved
@@ -465,13 +485,10 @@ class UpdateManager extends EventEmitter {
 
       // Add new files
       for (const item of analysis.changes.added) {
-        // Scripts are in repo root, not base-claude
-        // settings.json is in base-claude/.claude
+        // Scripts and settings.json are in base-claude/.claude
         const isScript = item.path.startsWith('scripts');
         const isSettings = item.path === 'settings.json';
-        const templateFilePath = isScript
-          ? path.join(this.templatePath, '..', item.path)
-          : isSettings
+        const templateFilePath = isScript || isSettings
           ? path.join(this.templatePath, '.claude', item.path)
           : path.join(this.templatePath, item.path);
         const projectFilePath = path.join(projectClaudeDir, item.path);
@@ -496,13 +513,10 @@ class UpdateManager extends EventEmitter {
 
       // Update modified files
       for (const item of analysis.changes.modified) {
-        // Scripts are in repo root, not base-claude
-        // settings.json is in base-claude/.claude
+        // Scripts and settings.json are in base-claude/.claude
         const isScript = item.path.startsWith('scripts');
         const isSettings = item.path === 'settings.json';
-        const templateFilePath = isScript
-          ? path.join(this.templatePath, '..', item.path)
-          : isSettings
+        const templateFilePath = isScript || isSettings
           ? path.join(this.templatePath, '.claude', item.path)
           : path.join(this.templatePath, item.path);
         const projectFilePath = path.join(projectClaudeDir, item.path);

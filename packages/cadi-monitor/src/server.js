@@ -15,6 +15,7 @@ class MonitorServer {
     this.configManager = new ConfigManager(configPath);
     this.updateManager = templatePath ? new UpdateManager(templatePath) : null;
     this.projects = new Map(); // Map<projectId, ProjectMonitor>
+    this.activeFeatureProcesses = new Map(); // Map<`${projectId}:${featureName}`, processInfo>
     this.app = express();
     this.server = http.createServer(this.app);
     this.wss = new WebSocket.Server({ server: this.server });
@@ -105,8 +106,54 @@ class MonitorServer {
         return res.status(404).json({ error: 'Project not found' });
       }
 
+      // Reconcile feature statuses before returning
+      this.reconcileFeatureStatuses(monitor);
+
       const features = monitor.getFeatures();
-      res.json({ features });
+
+      // Add active process indicator to features
+      const featuresWithStatus = features.map(feature => {
+        const key = `${req.params.id}:${feature.name}`;
+        const hasActiveProcess = this.activeFeatureProcesses.has(key);
+        return { ...feature, hasActiveProcess };
+      });
+
+      res.json({ features: featuresWithStatus });
+    });
+
+    // Update feature status
+    this.app.patch('/api/projects/:id/features/:featureId/status', (req, res) => {
+      try {
+        const monitor = this.projects.get(req.params.id);
+        if (!monitor) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const { status } = req.body;
+        const validStatuses = ['planning', 'ready', 'in_progress', 'testing', 'completed'];
+
+        if (!validStatuses.includes(status)) {
+          return res.status(400).json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` });
+        }
+
+        // Update in database
+        const Database = require('better-sqlite3');
+        const dbPath = `${monitor.path}/.claude/project.db`;
+        const db = new Database(dbPath);
+
+        const stmt = db.prepare('UPDATE features SET status = ? WHERE id = ?');
+        const result = stmt.run(status, parseInt(req.params.featureId));
+
+        db.close();
+
+        if (result.changes === 0) {
+          return res.status(404).json({ error: 'Feature not found' });
+        }
+
+        res.json({ success: true, status });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
     });
 
     // Get sections for a feature
@@ -196,6 +243,135 @@ class MonitorServer {
       const stats = monitor.getAgentStats();
 
       res.json({ invocations, stats });
+    });
+
+    // Create a new feature request and kick off planning
+    this.app.post('/api/projects/:id/features/create', async (req, res) => {
+      try {
+        const monitor = this.projects.get(req.params.id);
+        if (!monitor) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const { name, description } = req.body;
+        if (!name) {
+          return res.status(400).json({ error: 'Feature name is required' });
+        }
+
+        // Spawn Claude process to run /plan command
+        const { spawn } = require('child_process');
+
+        // Build the /plan command arguments
+        const planArgs = description
+          ? `/plan ${name} "${description}"`
+          : `/plan ${name}`;
+
+        const claude = spawn('claude', [
+          '--print',
+          '--dangerously-skip-permissions',
+          planArgs
+        ], {
+          cwd: monitor.path,
+          env: { ...process.env, FORCE_COLOR: '0' },
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        // Track active process
+        const processKey = `${monitor.id}:${name}`;
+        this.activeFeatureProcesses.set(processKey, {
+          pid: claude.pid,
+          featureName: name,
+          projectId: monitor.id,
+          startedAt: new Date().toISOString()
+        });
+
+        // Broadcast that feature was created (before DB record exists)
+        this.broadcast({
+          type: 'featureCreated',
+          projectId: monitor.id,
+          featureName: name,
+          description: description || '',
+          status: 'planning',
+          createdAt: new Date().toISOString()
+        });
+
+        // Broadcast that process has started
+        this.broadcast({
+          type: 'featureProcessStarted',
+          projectId: monitor.id,
+          featureName: name
+        });
+
+        // Stream output via WebSocket
+        claude.stdout.setEncoding('utf8');
+        claude.stdout.on('data', (data) => {
+          console.log(`Claude stdout: ${data}`);
+          this.broadcast({
+            type: 'featureCreationProgress',
+            projectId: monitor.id,
+            featureName: name,
+            output: data
+          });
+        });
+
+        claude.stderr.setEncoding('utf8');
+        claude.stderr.on('data', (data) => {
+          console.log(`Claude stderr (progress): ${data}`);
+          // Claude --print mode sends conversational output to stderr
+          this.broadcast({
+            type: 'featureCreationProgress',
+            projectId: monitor.id,
+            featureName: name,
+            output: data
+          });
+        });
+
+        claude.on('error', (err) => {
+          console.error(`Claude process error: ${err.message}`);
+          this.broadcast({
+            type: 'featureCreationError',
+            projectId: monitor.id,
+            featureName: name,
+            error: `Process error: ${err.message}`
+          });
+        });
+
+        claude.on('close', (code) => {
+          console.log(`Claude process exited with code ${code}`);
+
+          // Remove from active processes
+          this.activeFeatureProcesses.delete(processKey);
+
+          this.broadcast({
+            type: 'featureCreationComplete',
+            projectId: monitor.id,
+            featureName: name,
+            exitCode: code
+          });
+
+          // After planning completes, check if we should auto-transition to in_progress
+          if (code === 0) {
+            setTimeout(() => {
+              this.checkAndUpdateFeatureStatus(monitor, name);
+            }, 2000); // Wait 2 seconds for database to be fully updated
+          }
+
+          // Broadcast process stopped
+          this.broadcast({
+            type: 'featureProcessStopped',
+            projectId: monitor.id,
+            featureName: name
+          });
+        });
+
+        res.json({
+          success: true,
+          message: `Feature planning started for '${name}'`,
+          featureName: name
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
     });
 
     // Get aggregated stats across all projects
@@ -524,6 +700,136 @@ class MonitorServer {
         }
       }
     });
+  }
+
+  /**
+   * Check and update feature status based on sections
+   */
+  checkAndUpdateFeatureStatus(monitor, featureName) {
+    try {
+      const Database = require('better-sqlite3');
+      const dbPath = `${monitor.path}/.claude/project.db`;
+      const db = new Database(dbPath);
+
+      // Get feature
+      const feature = db.prepare('SELECT id, status FROM features WHERE name = ?').get(featureName);
+
+      if (!feature) {
+        db.close();
+        return;
+      }
+
+      // Get sections for this feature
+      const sections = db.prepare('SELECT status FROM sections WHERE feature_id = ?').all(feature.id);
+
+      if (sections.length === 0) {
+        db.close();
+        return;
+      }
+
+      // If feature is in planning/ready and has sections, move to in_progress
+      if ((feature.status === 'planning' || feature.status === 'ready') && sections.length > 0) {
+        db.prepare('UPDATE features SET status = ? WHERE id = ?').run('in_progress', feature.id);
+        console.log(`Auto-transitioned feature ${featureName} to in_progress (has ${sections.length} sections)`);
+
+        // Broadcast status change
+        this.broadcast({
+          type: 'featureStatusChanged',
+          projectId: monitor.id,
+          featureName: featureName,
+          oldStatus: feature.status,
+          newStatus: 'in_progress'
+        });
+      }
+
+      // If feature is in_progress and all sections are completed, move to completed
+      else if (feature.status === 'in_progress') {
+        const allCompleted = sections.every(s => s.status === 'completed');
+        if (allCompleted && sections.length > 0) {
+          db.prepare('UPDATE features SET status = ? WHERE id = ?').run('completed', feature.id);
+          console.log(`Auto-transitioned feature ${featureName} to completed (all ${sections.length} sections complete)`);
+
+          // Broadcast status change
+          this.broadcast({
+            type: 'featureStatusChanged',
+            projectId: monitor.id,
+            featureName: featureName,
+            oldStatus: 'in_progress',
+            newStatus: 'completed'
+          });
+        }
+      }
+
+      db.close();
+    } catch (error) {
+      console.error(`Error checking feature status: ${error.message}`);
+    }
+  }
+
+  /**
+   * Reconcile all feature statuses - check for stale statuses and fix them
+   */
+  reconcileFeatureStatuses(monitor) {
+    try {
+      const Database = require('better-sqlite3');
+      const dbPath = `${monitor.path}/.claude/project.db`;
+      const db = new Database(dbPath);
+
+      // Get all features with their sections
+      const features = db.prepare(`
+        SELECT
+          f.id,
+          f.name,
+          f.status,
+          COUNT(s.id) as section_count,
+          SUM(CASE WHEN s.status = 'completed' THEN 1 ELSE 0 END) as completed_sections
+        FROM features f
+        LEFT JOIN sections s ON f.id = s.feature_id
+        GROUP BY f.id
+      `).all();
+
+      let updatedCount = 0;
+
+      for (const feature of features) {
+        let newStatus = null;
+
+        // If feature is in planning/ready but has sections, should be in_progress
+        if ((feature.status === 'planning' || feature.status === 'ready') && feature.section_count > 0) {
+          newStatus = 'in_progress';
+        }
+        // If feature is in_progress but all sections are completed, should be completed
+        else if (feature.status === 'in_progress' && feature.section_count > 0 && feature.completed_sections === feature.section_count) {
+          newStatus = 'completed';
+        }
+
+        if (newStatus) {
+          db.prepare('UPDATE features SET status = ? WHERE id = ?').run(newStatus, feature.id);
+          console.log(`Reconciled feature ${feature.name}: ${feature.status} → ${newStatus} (${feature.completed_sections}/${feature.section_count} sections complete)`);
+
+          // Broadcast status change
+          this.broadcast({
+            type: 'featureStatusChanged',
+            projectId: monitor.id,
+            featureName: feature.name,
+            oldStatus: feature.status,
+            newStatus: newStatus
+          });
+
+          updatedCount++;
+        }
+      }
+
+      db.close();
+
+      if (updatedCount > 0) {
+        console.log(`Reconciliation complete: updated ${updatedCount} feature(s)`);
+      }
+
+      return updatedCount;
+    } catch (error) {
+      console.error(`Error reconciling feature statuses: ${error.message}`);
+      return 0;
+    }
   }
 
   /**

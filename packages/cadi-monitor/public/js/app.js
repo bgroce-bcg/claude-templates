@@ -6,6 +6,9 @@ class CADIMonitor {
     this.selectedProject = null;
     this.currentView = 'overview';
     this.activityLog = [];
+    this.pendingFeatures = new Map(); // Map<projectId:featureName, tempFeatureData>
+    this.featureOutputs = new Map(); // Map<projectId:featureName, outputText>
+    this.currentlyViewingFeature = null; // { projectId, featureName }
 
     this.init();
   }
@@ -70,6 +73,8 @@ class CADIMonitor {
    * Handle WebSocket messages
    */
   handleWebSocketMessage(data) {
+    console.log('[WebSocket] Received message:', data.type, data);
+
     switch (data.type) {
       case 'connected':
         console.log('Server acknowledged connection');
@@ -103,6 +108,41 @@ class CADIMonitor {
         }
         break;
 
+      case 'featureCreated':
+        console.log(`Feature created: ${data.featureName}`);
+        this.handleFeatureCreated(data);
+        break;
+
+      case 'featureCreationProgress':
+        console.log(`Feature creation progress: ${data.featureName}`);
+        this.handleFeatureCreationProgress(data);
+        break;
+
+      case 'featureCreationError':
+        console.error(`Feature creation error: ${data.featureName}`, data.error);
+        this.handleFeatureCreationError(data);
+        break;
+
+      case 'featureCreationComplete':
+        console.log(`Feature creation complete: ${data.featureName}, exit code: ${data.exitCode}`);
+        this.handleFeatureCreationComplete(data);
+        break;
+
+      case 'featureProcessStarted':
+        console.log(`Feature process started: ${data.featureName}`);
+        this.handleFeatureProcessStarted(data);
+        break;
+
+      case 'featureProcessStopped':
+        console.log(`Feature process stopped: ${data.featureName}`);
+        this.handleFeatureProcessStopped(data);
+        break;
+
+      case 'featureStatusChanged':
+        console.log(`Feature status changed: ${data.featureName} (${data.oldStatus} → ${data.newStatus})`);
+        this.handleFeatureStatusChanged(data);
+        break;
+
       default:
         console.log('Unknown message type:', data.type);
     }
@@ -131,13 +171,7 @@ class CADIMonitor {
    */
   setupEventListeners() {
     // Refresh button
-    document.getElementById('refreshBtn').addEventListener('click', (e) => {
-      // Animate refresh icon
-      const icon = e.currentTarget.querySelector('svg');
-      if (window.animationController && icon) {
-        window.animationController.animateRefreshIcon(icon);
-      }
-
+    document.getElementById('refreshBtn').addEventListener('click', () => {
       this.loadProjects();
       if (this.selectedProject) {
         this.loadProjectDetails(this.selectedProject);
@@ -175,6 +209,44 @@ class CADIMonitor {
 
     document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
       this.handleDeleteProject();
+    });
+
+    // Create feature button
+    document.getElementById('createFeatureBtn').addEventListener('click', () => {
+      this.showCreateFeatureModal();
+    });
+
+    // Create feature modal
+    document.getElementById('closeCreateFeatureModalBtn').addEventListener('click', () => {
+      this.hideCreateFeatureModal();
+    });
+
+    document.getElementById('cancelCreateFeatureBtn').addEventListener('click', () => {
+      this.hideCreateFeatureModal();
+    });
+
+    // Create feature form
+    document.getElementById('createFeatureForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleCreateFeature();
+    });
+
+    // Click outside modal to close
+    document.getElementById('createFeatureModal').addEventListener('click', (e) => {
+      if (e.target.id === 'createFeatureModal') {
+        this.hideCreateFeatureModal();
+      }
+    });
+
+    // Feature details modal
+    document.getElementById('closeFeatureDetailsModalBtn').addEventListener('click', () => {
+      this.hideFeatureDetailsModal();
+    });
+
+    document.getElementById('featureDetailsModal').addEventListener('click', (e) => {
+      if (e.target.id === 'featureDetailsModal') {
+        this.hideFeatureDetailsModal();
+      }
     });
 
     // View tabs
@@ -381,64 +453,238 @@ class CADIMonitor {
   }
 
   /**
-   * Render features
+   * Render features as Kanban board
    */
   renderFeatures(features, projectId) {
     const container = document.getElementById('featuresContainer');
 
-    if (!features || features.length === 0) {
+    // Merge pending features with database features
+    const featureNames = new Set(features.map(f => f.name));
+    const pendingForProject = [];
+
+    // Add pending features that don't exist in DB yet
+    for (const [key, pendingFeature] of this.pendingFeatures.entries()) {
+      if (key.startsWith(`${projectId}:`)) {
+        const featureName = key.split(':')[1];
+        if (!featureNames.has(featureName)) {
+          pendingForProject.push(pendingFeature);
+        } else {
+          // Feature now exists in DB, remove from pending
+          this.pendingFeatures.delete(key);
+        }
+      }
+    }
+
+    const allFeatures = [...pendingForProject, ...features];
+
+    if (allFeatures.length === 0) {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">📋</div>
           <div class="empty-state-message">No features found</div>
-          <div class="empty-state-hint">Features will appear here when they are created</div>
+          <div class="empty-state-hint">Create a feature to get started</div>
         </div>
       `;
       return;
     }
 
-    container.innerHTML = features.map(feature => `
-      <div class="feature-card" data-feature-id="${feature.id}">
-        <div class="feature-header" data-feature-id="${feature.id}">
-          <div class="feature-info">
-            <div class="feature-name">${this.escapeHtml(feature.name)}</div>
-            ${feature.summary ? `<div class="feature-summary">${this.escapeHtml(feature.summary)}</div>` : ''}
+    // Group features by status
+    const columns = {
+      planning: { title: 'Planning', features: [] },
+      in_progress: { title: 'In Progress', features: [] },
+      testing: { title: 'Testing', features: [] },
+      completed: { title: 'Complete', features: [] }
+    };
+
+    allFeatures.forEach(feature => {
+      const status = feature.status === 'ready' ? 'planning' : feature.status;
+      if (columns[status]) {
+        columns[status].features.push(feature);
+      }
+    });
+
+    // Build Kanban board HTML
+    container.innerHTML = `
+      <div class="kanban-board">
+        ${Object.entries(columns).map(([status, column]) => `
+          <div class="kanban-column" data-status="${status}">
+            <div class="kanban-column-header">
+              <h3>${column.title}</h3>
+              <span class="kanban-column-count">${column.features.length}</span>
+            </div>
+            <div class="kanban-column-content">
+              ${column.features.length === 0 ? `
+                <div class="kanban-empty-state">No features</div>
+              ` : column.features.map(feature => `
+                <div class="kanban-card ${feature.hasActiveProcess ? 'has-active-process' : ''} ${feature.isPending ? 'pending-feature' : ''}" data-feature-id="${feature.id || ''}" data-feature-name="${this.escapeHtml(feature.name)}" data-status="${status}">
+                  <div class="kanban-card-header">
+                    <div class="kanban-card-title">
+                      ${feature.hasActiveProcess ? '<span class="active-process-indicator" title="Claude is working on this feature"></span>' : ''}
+                      ${this.escapeHtml(feature.name)}
+                    </div>
+                    ${status !== 'completed' && !feature.isPending ? `
+                      <button class="kanban-card-next-btn" data-feature-id="${feature.id}" data-current-status="${status}" title="Move to next stage">→</button>
+                    ` : ''}
+                  </div>
+                  ${feature.summary ? `<div class="kanban-card-summary">${this.escapeHtml(feature.summary)}</div>` : ''}
+                  <div class="kanban-card-footer">
+                    <span class="kanban-card-date">${new Date(feature.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
           </div>
-          <div class="feature-meta">
-            <span class="badge badge-${feature.status}">${feature.status}</span>
-          </div>
-        </div>
-        <div class="sections-list" id="sections-${feature.id}"></div>
+        `).join('')}
       </div>
-    `).join('');
+    `;
 
-    // Add click listeners for expanding sections
-    container.querySelectorAll('.feature-header').forEach(header => {
-      header.addEventListener('click', async () => {
-        const featureId = header.dataset.featureId;
-        const sectionsList = document.getElementById(`sections-${featureId}`);
-
-        if (sectionsList.classList.contains('expanded')) {
-          // Collapse with animation
-          if (window.animationController) {
-            window.animationController.animateSectionsCollapse(sectionsList, () => {
-              sectionsList.classList.remove('expanded');
-              sectionsList.innerHTML = '';
-            });
-          } else {
-            sectionsList.classList.remove('expanded');
-            sectionsList.innerHTML = '';
-          }
-        } else {
-          await this.loadSections(projectId, featureId);
-          sectionsList.classList.add('expanded');
-        }
+    // Add click listeners for next-stage buttons
+    container.querySelectorAll('.kanban-card-next-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const featureId = btn.dataset.featureId;
+        const currentStatus = btn.dataset.currentStatus;
+        await this.moveFeatureToNextStage(projectId, featureId, currentStatus);
       });
     });
 
-    // Animate feature cards entrance
-    if (window.animationController) {
-      window.animationController.animateFeatureCards();
+    // Add click listeners for cards to expand sections
+    container.querySelectorAll('.kanban-card').forEach(card => {
+      card.addEventListener('click', async () => {
+        const featureId = card.dataset.featureId;
+        // Skip pending features (they don't have IDs yet)
+        if (!featureId) return;
+        await this.showFeatureDetails(projectId, featureId);
+      });
+    });
+  }
+
+  /**
+   * Move feature to next stage in workflow
+   */
+  async moveFeatureToNextStage(projectId, featureId, currentStatus) {
+    const statusFlow = {
+      'planning': 'in_progress',
+      'in_progress': 'testing',
+      'testing': 'completed'
+    };
+
+    const nextStatus = statusFlow[currentStatus];
+    if (!nextStatus) return;
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/features/${featureId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        alert(`Failed to update status: ${error.error}`);
+        return;
+      }
+
+      // Refresh features view
+      await this.loadFeatures(projectId);
+    } catch (error) {
+      console.error('Failed to update feature status:', error);
+      alert('Failed to update feature status. Check console for details.');
+    }
+  }
+
+  /**
+   * Show feature details modal/overlay
+   */
+  async showFeatureDetails(projectId, featureId) {
+    try {
+      // Load feature details
+      const featureResponse = await fetch(`/api/projects/${projectId}/features`);
+      const featureData = await featureResponse.json();
+      const feature = featureData.features.find(f => f.id === parseInt(featureId));
+
+      if (!feature) {
+        alert('Feature not found');
+        return;
+      }
+
+      // Load sections
+      const sectionsResponse = await fetch(`/api/projects/${projectId}/features/${featureId}/sections`);
+      const sectionsData = await sectionsResponse.json();
+
+      // Set currently viewing feature
+      this.currentlyViewingFeature = {
+        projectId: projectId,
+        featureName: feature.name
+      };
+
+      // Update modal content
+      document.getElementById('featureDetailsTitle').textContent = feature.name;
+
+      // Check if there's live output for this feature
+      const outputKey = `${projectId}:${feature.name}`;
+      const liveOutputSection = document.getElementById('featureLiveOutputSection');
+      const liveOutput = document.getElementById('featureLiveOutput');
+
+      if (this.featureOutputs.has(outputKey)) {
+        // Show live output section with stored output
+        liveOutputSection.style.display = 'block';
+        liveOutput.textContent = this.featureOutputs.get(outputKey);
+        liveOutput.scrollTop = liveOutput.scrollHeight;
+      } else {
+        // Hide live output section
+        liveOutputSection.style.display = 'none';
+        liveOutput.textContent = '';
+      }
+
+      const summaryEl = document.getElementById('featureDetailsSummary');
+      summaryEl.innerHTML = `
+        <div style="margin-bottom: 1.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <span class="badge badge-${feature.status}">${feature.status}</span>
+            <span style="color: var(--text-secondary); font-size: 0.875rem;">
+              Created ${new Date(feature.created_at).toLocaleDateString()}
+            </span>
+          </div>
+          ${feature.summary ? `<p style="color: var(--text-secondary); margin: 0;">${this.escapeHtml(feature.summary)}</p>` : ''}
+        </div>
+      `;
+
+      const sectionsEl = document.getElementById('featureDetailsSections');
+      if (!sectionsData.sections || sectionsData.sections.length === 0) {
+        sectionsEl.innerHTML = `
+          <div class="empty-state" style="padding: 2rem; text-align: center;">
+            <div class="empty-state-message">No sections defined yet</div>
+            <div class="empty-state-hint">Sections will appear here once the planning is complete</div>
+          </div>
+        `;
+      } else {
+        sectionsEl.innerHTML = sectionsData.sections.map(section => `
+          <div class="section-card" style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 0.5rem;">
+              <div style="font-weight: 600; font-size: 1rem;">${this.escapeHtml(section.name)}</div>
+              <span class="badge badge-${section.status}">${section.status}</span>
+            </div>
+            ${section.description ? `
+              <div style="color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 0.75rem;">
+                ${this.escapeHtml(section.description)}
+              </div>
+            ` : ''}
+            <div style="display: flex; gap: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+              ${section.estimated_hours ? `<span>Est: ${section.estimated_hours}h</span>` : ''}
+              ${section.actual_hours ? `<span>Actual: ${section.actual_hours}h</span>` : ''}
+              ${section.started_at ? `<span>Started: ${new Date(section.started_at).toLocaleDateString()}</span>` : ''}
+              ${section.completed_at ? `<span>Completed: ${new Date(section.completed_at).toLocaleDateString()}</span>` : ''}
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Show modal
+      document.getElementById('featureDetailsModal').classList.add('active');
+    } catch (error) {
+      console.error('Failed to load feature details:', error);
+      alert('Failed to load feature details. Check console for details.');
     }
   }
 
@@ -482,11 +728,6 @@ class CADIMonitor {
         </div>
       </div>
     `).join('');
-
-    // Animate sections expansion
-    if (window.animationController) {
-      window.animationController.animateSectionsExpand(container);
-    }
   }
 
   /**
@@ -567,11 +808,6 @@ class CADIMonitor {
         </div>
       </div>
     `).join('');
-
-    // Animate context docs entrance
-    if (window.animationController) {
-      window.animationController.animateContextDocs();
-    }
   }
 
   /**
@@ -697,12 +933,6 @@ class CADIMonitor {
         </div>
       `;
     }).join('');
-
-    // Animate error items and stats
-    if (window.animationController) {
-      window.animationController.animateErrorItems();
-      window.animationController.animateStatsCards();
-    }
   }
 
   /**
@@ -786,12 +1016,6 @@ class CADIMonitor {
           this.selectProject(projectId);
         });
       });
-
-      // Animate stats and project cards
-      if (window.animationController) {
-        window.animationController.animateStatsCards();
-        window.animationController.animateProjectCards();
-      }
     } catch (error) {
       console.error('Failed to load overview stats:', error);
     }
@@ -832,17 +1056,7 @@ class CADIMonitor {
    * Switch view
    */
   switchView(viewName) {
-    const previousView = this.currentView;
     this.currentView = viewName;
-
-    // Find old and new tab buttons for animation
-    const oldTab = document.querySelector(`.tab-btn[data-view="${previousView}"]`);
-    const newTab = document.querySelector(`.tab-btn[data-view="${viewName}"]`);
-
-    // Animate tab switch
-    if (window.animationController && oldTab && newTab) {
-      window.animationController.animateTabSwitch(oldTab, newTab);
-    }
 
     // Update tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -853,22 +1067,14 @@ class CADIMonitor {
       }
     });
 
-    // Get old and new views for transition animation
-    const oldView = document.querySelector('.view.active');
-    const newView = document.getElementById(`${viewName}View`);
-
-    // Animate view transition
-    if (window.animationController && oldView && newView && oldView !== newView) {
-      window.animationController.animateViewChange(oldView, newView);
-    }
-
     // Update views
     document.querySelectorAll('.view').forEach(view => {
       view.classList.remove('active');
     });
 
-    if (newView) {
-      newView.classList.add('active');
+    const activeView = document.getElementById(`${viewName}View`);
+    if (activeView) {
+      activeView.classList.add('active');
     }
 
     // Load data for view
@@ -893,31 +1099,15 @@ class CADIMonitor {
    * Show add project modal
    */
   showAddProjectModal() {
-    const modal = document.getElementById('addProjectModal');
-    modal.classList.add('active');
-
-    // Animate modal opening
-    if (window.animationController) {
-      window.animationController.animateModalOpen(modal);
-    }
+    document.getElementById('addProjectModal').classList.add('active');
   }
 
   /**
    * Hide add project modal
    */
   hideAddProjectModal() {
-    const modal = document.getElementById('addProjectModal');
-
-    // Animate modal closing
-    if (window.animationController) {
-      window.animationController.animateModalClose(modal, () => {
-        modal.classList.remove('active');
-        document.getElementById('addProjectForm').reset();
-      });
-    } else {
-      modal.classList.remove('active');
-      document.getElementById('addProjectForm').reset();
-    }
+    document.getElementById('addProjectModal').classList.remove('active');
+    document.getElementById('addProjectForm').reset();
   }
 
   /**
@@ -971,31 +1161,15 @@ class CADIMonitor {
     document.getElementById('deleteProjectPath').textContent = project.path;
 
     // Show modal
-    const modal = document.getElementById('deleteProjectModal');
-    modal.classList.add('active');
-
-    // Animate modal opening
-    if (window.animationController) {
-      window.animationController.animateModalOpen(modal);
-    }
+    document.getElementById('deleteProjectModal').classList.add('active');
   }
 
   /**
    * Hide delete project modal
    */
   hideDeleteProjectModal() {
-    const modal = document.getElementById('deleteProjectModal');
-
-    // Animate modal closing
-    if (window.animationController) {
-      window.animationController.animateModalClose(modal, () => {
-        modal.classList.remove('active');
-        this.projectToDelete = null;
-      });
-    } else {
-      modal.classList.remove('active');
-      this.projectToDelete = null;
-    }
+    document.getElementById('deleteProjectModal').classList.remove('active');
+    this.projectToDelete = null;
   }
 
   /**
@@ -1091,11 +1265,230 @@ class CADIMonitor {
         </div>
       `;
     }).join('');
+  }
 
-    // Animate activity items
-    if (window.animationController) {
-      window.animationController.animateActivityItems();
+  /**
+   * Handle feature created (before DB record exists)
+   */
+  handleFeatureCreated(data) {
+    const key = `${data.projectId}:${data.featureName}`;
+
+    // Store pending feature
+    this.pendingFeatures.set(key, {
+      name: data.featureName,
+      status: 'planning',
+      summary: data.description,
+      created_at: data.createdAt,
+      isPending: true,
+      hasActiveProcess: true
+    });
+
+    // Refresh features view if we're currently viewing this project
+    if (this.selectedProject === data.projectId && this.currentView === 'features') {
+      this.loadFeatures(data.projectId);
     }
+  }
+
+  /**
+   * Handle feature creation progress
+   */
+  handleFeatureCreationProgress(data) {
+    // Store output for this feature
+    const key = `${data.projectId}:${data.featureName}`;
+    const currentOutput = this.featureOutputs.get(key) || '';
+    this.featureOutputs.set(key, currentOutput + data.output);
+
+    console.log(`[FeatureProgress] Received output for ${key}`);
+    console.log(`[FeatureProgress] Currently viewing:`, this.currentlyViewingFeature);
+    console.log(`[FeatureProgress] Stored outputs keys:`, Array.from(this.featureOutputs.keys()));
+
+    // Show live output in activity log
+    this.addActivityItem(`Creating feature: ${data.output.substring(0, 100)}`,
+                         this.getProjectName(data.projectId),
+                         new Date().toISOString());
+
+    // If there's a feature creation modal open, append to output
+    const outputElement = document.getElementById('featureCreationOutput');
+    if (outputElement) {
+      outputElement.textContent += data.output;
+      outputElement.scrollTop = outputElement.scrollHeight;
+    }
+
+    // If feature details modal is open for this feature, update live output
+    if (this.currentlyViewingFeature &&
+        this.currentlyViewingFeature.projectId === data.projectId &&
+        this.currentlyViewingFeature.featureName === data.featureName) {
+      console.log(`[FeatureProgress] Updating live output for ${key}`);
+      const liveOutputSection = document.getElementById('featureLiveOutputSection');
+      const liveOutput = document.getElementById('featureLiveOutput');
+      if (liveOutputSection && liveOutput) {
+        liveOutputSection.style.display = 'block';
+        liveOutput.textContent = this.featureOutputs.get(key);
+        liveOutput.scrollTop = liveOutput.scrollHeight;
+      }
+    }
+  }
+
+  /**
+   * Handle feature creation error
+   */
+  handleFeatureCreationError(data) {
+    this.addActivityItem(`Feature creation error: ${data.featureName}`,
+                         this.getProjectName(data.projectId),
+                         new Date().toISOString());
+
+    const outputElement = document.getElementById('featureCreationOutput');
+    if (outputElement) {
+      const errorDiv = document.createElement('div');
+      errorDiv.style.color = '#ef4444';
+      errorDiv.textContent = `ERROR: ${data.error}`;
+      outputElement.appendChild(errorDiv);
+      outputElement.scrollTop = outputElement.scrollHeight;
+    }
+  }
+
+  /**
+   * Handle feature creation complete
+   */
+  handleFeatureCreationComplete(data) {
+    const success = data.exitCode === 0;
+    const message = success
+      ? `Feature '${data.featureName}' created successfully`
+      : `Feature '${data.featureName}' creation failed (exit code: ${data.exitCode})`;
+
+    this.addActivityItem(message, this.getProjectName(data.projectId), new Date().toISOString());
+
+    // Close modal if open
+    const modal = document.getElementById('createFeatureModal');
+    if (modal && success) {
+      setTimeout(() => {
+        this.hideCreateFeatureModal();
+        // Refresh features view
+        if (this.selectedProject === data.projectId) {
+          this.loadFeatures(data.projectId);
+        }
+      }, 2000);
+    }
+  }
+
+  /**
+   * Get project name by ID
+   */
+  getProjectName(projectId) {
+    const project = this.projects.find(p => p.id === projectId);
+    return project ? project.name : projectId;
+  }
+
+  /**
+   * Show create feature modal
+   */
+  showCreateFeatureModal() {
+    if (!this.selectedProject) {
+      alert('Please select a project first');
+      return;
+    }
+    document.getElementById('createFeatureModal').classList.add('active');
+  }
+
+  /**
+   * Hide create feature modal
+   */
+  hideCreateFeatureModal() {
+    document.getElementById('createFeatureModal').classList.remove('active');
+    document.getElementById('createFeatureForm').reset();
+    const outputElement = document.getElementById('featureCreationOutput');
+    if (outputElement) {
+      outputElement.textContent = '';
+    }
+  }
+
+  /**
+   * Hide feature details modal
+   */
+  hideFeatureDetailsModal() {
+    document.getElementById('featureDetailsModal').classList.remove('active');
+  }
+
+  /**
+   * Handle create feature form submission
+   */
+  async handleCreateFeature() {
+    const form = document.getElementById('createFeatureForm');
+    const formData = new FormData(form);
+    const name = formData.get('featureName');
+    const description = formData.get('featureDescription');
+
+    const submitBtn = document.getElementById('createFeatureSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating...';
+
+    try {
+      const response = await fetch(`/api/projects/${this.selectedProject}/features/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(`Failed to create feature: ${result.error}`);
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Feature';
+        return;
+      }
+
+      // Close modal immediately
+      this.hideCreateFeatureModal();
+
+      // Refresh features view to show new card
+      await this.loadFeatures(this.selectedProject);
+
+      // Show activity notification
+      this.addActivityItem(`Started planning feature: ${name}`,
+                           this.getProjectName(this.selectedProject),
+                           new Date().toISOString());
+    } catch (error) {
+      console.error('Failed to create feature:', error);
+      alert('Failed to create feature. Check console for details.');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create Feature';
+    }
+  }
+
+  /**
+   * Handle feature process started
+   */
+  handleFeatureProcessStarted(data) {
+    // Refresh features to show active indicator
+    if (this.selectedProject === data.projectId && this.currentView === 'features') {
+      this.loadFeatures(data.projectId);
+    }
+  }
+
+  /**
+   * Handle feature process stopped
+   */
+  handleFeatureProcessStopped(data) {
+    // Refresh features to remove active indicator and show updated status
+    if (this.selectedProject === data.projectId && this.currentView === 'features') {
+      this.loadFeatures(data.projectId);
+    }
+  }
+
+  /**
+   * Handle feature status changed
+   */
+  handleFeatureStatusChanged(data) {
+    // Refresh features to show updated status in correct column
+    if (this.selectedProject === data.projectId && this.currentView === 'features') {
+      this.loadFeatures(data.projectId);
+    }
+
+    // Add activity log
+    this.addActivityItem(`Feature ${data.featureName} moved to ${data.newStatus}`,
+                         this.getProjectName(data.projectId),
+                         new Date().toISOString());
   }
 
   /**
