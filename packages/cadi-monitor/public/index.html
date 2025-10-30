@@ -52,6 +52,7 @@
                     <button class="tab-btn" data-view="context">Context</button>
                     <button class="tab-btn" data-view="errors">Errors</button>
                     <button class="tab-btn" data-view="agents">Agents</button>
+                    <button class="tab-btn" data-view="database">Database</button>
                     <button class="tab-btn" data-view="updates">Updates</button>
                     <button class="tab-btn" data-view="activity">Activity</button>
                     <button class="tab-btn" data-view="system">System</button>
@@ -177,6 +178,43 @@
 
                     <div class="agents-container" id="agentsContainer">
                         <!-- Agent invocations will be loaded here -->
+                    </div>
+                </div>
+
+                <!-- Database View -->
+                <div class="view" id="databaseView">
+                    <div class="view-header">
+                        <h2>Database Explorer</h2>
+                        <div class="view-subtitle" id="databaseProjectName"></div>
+                    </div>
+
+                    <!-- Sub-tabs for Database -->
+                    <div class="sub-tabs">
+                        <button class="sub-tab-btn active" data-subview="tables">Tables</button>
+                        <button class="sub-tab-btn" data-subview="query">Custom Query</button>
+                    </div>
+
+                    <!-- Tables Sub-view -->
+                    <div class="sub-view active" id="databaseTables">
+                        <div class="database-tables-list" id="databaseTablesList">
+                            <!-- Tables list will be loaded here -->
+                        </div>
+                    </div>
+
+                    <!-- Query Sub-view -->
+                    <div class="sub-view" id="databaseQuery">
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">SQL Query (SELECT only)</label>
+                            <textarea id="sqlQueryInput" rows="4" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card-bg); color: var(--text); font-family: 'Monaco', 'Courier New', monospace; font-size: 0.875rem;" placeholder="SELECT * FROM features WHERE status = 'in_progress'"></textarea>
+                        </div>
+                        <div style="margin-bottom: 1.5rem;">
+                            <button class="btn-primary" id="executeQueryBtn">Execute Query</button>
+                            <button class="btn-secondary" id="clearQueryBtn" style="margin-left: 0.5rem;">Clear</button>
+                        </div>
+                        <div id="queryResults" style="display: none;">
+                            <h4 style="margin-bottom: 0.75rem;">Results (<span id="queryRowCount">0</span> rows)</h4>
+                            <div id="queryResultsContent"></div>
+                        </div>
                     </div>
                 </div>
 
@@ -393,6 +431,7 @@
     <script src="/js/agents.js"></script>
     <script src="/js/updates.js"></script>
     <script src="/js/context-loads.js"></script>
+    <script src="/js/database.js"></script>
     <script src="/js/app.js"></script>
 </body>
 </html>

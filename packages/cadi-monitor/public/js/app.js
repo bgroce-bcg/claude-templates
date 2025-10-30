@@ -87,11 +87,12 @@ class CADIMonitor {
       case 'statsChanged':
         console.log('Stats changed for', data.projectName);
         // Skip adding "Project statistics updated" to activity log (too frequent)
-        this.loadProjects(); // Refresh project data
+        // Only update project list and overview, don't reload entire projects
+        this.updateProjectStats(data.projectId);
 
-        // If the changed project is currently selected, refresh the current view
-        if (this.selectedProject === data.projectId) {
-          this.refreshCurrentView();
+        // Only refresh current view if it's overview (most views don't need refresh on stats change)
+        if (this.currentView === 'overview') {
+          this.renderOverview();
         }
         break;
 
@@ -283,11 +284,17 @@ class CADIMonitor {
       }
     });
 
-    // Context sub-tabs
+    // Sub-tabs (for Context and Database views)
     document.querySelectorAll('.sub-tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const subview = e.target.dataset.subview;
-        this.switchContextSubview(subview);
+        // Determine which view we're in based on the parent
+        const parentView = e.target.closest('.view');
+        if (parentView && parentView.id === 'contextView') {
+          this.switchContextSubview(subview);
+        } else if (parentView && parentView.id === 'databaseView') {
+          this.switchDatabaseSubview(subview);
+        }
       });
     });
 
@@ -318,6 +325,26 @@ class CADIMonitor {
       this.renderOverview();
     } catch (error) {
       console.error('Failed to load projects:', error);
+    }
+  }
+
+  /**
+   * Update stats for a specific project without disrupting the UI
+   */
+  async updateProjectStats(projectId) {
+    try {
+      const response = await fetch(`/api/projects/${projectId}`);
+      const data = await response.json();
+
+      // Update the project in our local array
+      const projectIndex = this.projects.findIndex(p => p.id === projectId);
+      if (projectIndex !== -1) {
+        this.projects[projectIndex] = data;
+        // Re-render just the project list, not the entire view
+        this.renderProjectsList();
+      }
+    } catch (error) {
+      console.error('Failed to update project stats:', error);
     }
   }
 
@@ -754,8 +781,9 @@ class CADIMonitor {
    * Switch context subview
    */
   switchContextSubview(subview) {
-    // Update sub-tabs
-    document.querySelectorAll('.sub-tab-btn').forEach(btn => {
+    // Update sub-tabs within context view
+    const contextView = document.getElementById('contextView');
+    contextView.querySelectorAll('.sub-tab-btn').forEach(btn => {
       if (btn.dataset.subview === subview) {
         btn.classList.add('active');
       } else {
@@ -763,8 +791,8 @@ class CADIMonitor {
       }
     });
 
-    // Update sub-views
-    document.querySelectorAll('.sub-view').forEach(view => {
+    // Update sub-views within context view
+    contextView.querySelectorAll('.sub-view').forEach(view => {
       view.classList.remove('active');
     });
 
@@ -776,6 +804,32 @@ class CADIMonitor {
       if (this.selectedProject && typeof contextLoadsManager !== 'undefined') {
         contextLoadsManager.init(this.selectedProject);
       }
+    }
+  }
+
+  /**
+   * Switch database sub-view
+   */
+  switchDatabaseSubview(subview) {
+    // Update sub-tabs within database view
+    const databaseView = document.getElementById('databaseView');
+    databaseView.querySelectorAll('.sub-tab-btn').forEach(btn => {
+      if (btn.dataset.subview === subview) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    // Update sub-views within database view
+    databaseView.querySelectorAll('.sub-view').forEach(view => {
+      view.classList.remove('active');
+    });
+
+    if (subview === 'tables') {
+      document.getElementById('databaseTables').classList.add('active');
+    } else if (subview === 'query') {
+      document.getElementById('databaseQuery').classList.add('active');
     }
   }
 
@@ -1042,6 +1096,11 @@ class CADIMonitor {
           this.agentActivityManager.loadAgents(this.selectedProject);
         }
         break;
+      case 'database':
+        if (typeof loadDatabaseTables !== 'undefined') {
+          loadDatabaseTables(this.selectedProject);
+        }
+        break;
       case 'overview':
         this.renderOverview();
         break;
@@ -1095,6 +1154,13 @@ class CADIMonitor {
       this.loadErrors(this.selectedProject);
     } else if (viewName === 'agents' && this.selectedProject && this.agentActivityManager) {
       this.agentActivityManager.loadAgents(this.selectedProject);
+    } else if (viewName === 'database' && this.selectedProject) {
+      // Update database view project name
+      document.getElementById('databaseProjectName').textContent = this.getProjectName(this.selectedProject);
+      // Load database tables
+      if (typeof loadDatabaseTables !== 'undefined') {
+        loadDatabaseTables(this.selectedProject);
+      }
     }
   }
 

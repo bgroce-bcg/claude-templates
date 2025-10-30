@@ -596,6 +596,218 @@ body::before {
     gap: 1rem;
 }
 
+/* Kanban Board */
+.kanban-board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+    width: 100%;
+    margin-top: 1rem;
+}
+
+@media (max-width: 1400px) {
+    .kanban-board {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .kanban-board {
+        grid-template-columns: 1fr;
+    }
+}
+
+.kanban-column {
+    background: rgba(19, 24, 55, 0.4);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 217, 255, 0.2);
+    border-radius: 16px;
+    padding: 1rem;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.kanban-column:hover {
+    border-color: var(--accent-primary);
+    box-shadow: 0 4px 20px rgba(0, 217, 255, 0.15);
+}
+
+.kanban-column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, var(--accent-primary) 0%, transparent 100%);
+    border-image-slice: 1;
+}
+
+.kanban-column-header h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+}
+
+.kanban-column-count {
+    background: rgba(0, 217, 255, 0.15);
+    color: var(--accent-primary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    min-width: 24px;
+    text-align: center;
+    box-shadow: 0 0 10px rgba(0, 217, 255, 0.3);
+}
+
+.kanban-column-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    overflow-y: auto;
+}
+
+.kanban-empty-state {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    font-style: italic;
+}
+
+.kanban-card {
+    background: rgba(19, 24, 55, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(0, 217, 255, 0.3);
+    border-radius: 12px;
+    padding: 1rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.kanban-card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent-primary);
+    box-shadow: 0 8px 24px rgba(0, 217, 255, 0.3);
+    background: rgba(19, 24, 55, 0.95);
+}
+
+.kanban-card.has-active-process {
+    border-color: var(--warning);
+    box-shadow: 0 0 20px rgba(255, 184, 0, 0.3);
+    animation: activeProcessGlow 2s ease-in-out infinite;
+}
+
+@keyframes activeProcessGlow {
+    0%, 100% {
+        box-shadow: 0 0 15px rgba(255, 184, 0, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(255, 184, 0, 0.5);
+    }
+}
+
+.kanban-card.pending-feature {
+    border-style: dashed;
+    opacity: 0.8;
+}
+
+.kanban-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    margin-bottom: 0.5rem;
+}
+
+.kanban-card-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.kanban-card-next-btn {
+    background: rgba(0, 217, 255, 0.15);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.kanban-card-next-btn:hover {
+    background: var(--accent-primary);
+    color: white;
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(0, 217, 255, 0.5);
+}
+
+.kanban-card-summary {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.kanban-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.kanban-card-date {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.active-process-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warning);
+    animation: processPulse 1.5s ease-in-out infinite;
+    box-shadow: 0 0 10px var(--warning);
+}
+
+@keyframes processPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.2);
+    }
+}
+
 .feature-card {
     background: rgba(19, 24, 55, 0.6);
     backdrop-filter: blur(10px);
@@ -2367,4 +2579,108 @@ button:disabled {
     color: var(--text-muted) !important;
     font-style: italic;
     margin-bottom: 1rem !important;
+}
+
+/* Database Explorer Styles */
+.database-tables-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.database-table-card {
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid var(--border-color);
+}
+
+.database-table-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-primary);
+    box-shadow: var(--glow-cyan);
+    transform: translateY(-2px);
+}
+
+.database-table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.database-table-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.database-table-detail {
+    animation: fadeIn 0.3s ease;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-secondary);
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.data-table thead {
+    background: var(--bg-tertiary);
+}
+
+.data-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+    font-size: 0.875rem;
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.data-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.data-table tbody tr:hover {
+    background: var(--bg-hover);
+}
+
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.pagination-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.pagination-controls button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }

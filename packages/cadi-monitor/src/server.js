@@ -413,6 +413,134 @@ class MonitorServer {
       res.json(stats);
     });
 
+    // Database explorer endpoints
+    // Get list of tables in project database
+    this.app.get('/api/projects/:id/database/tables', (req, res) => {
+      try {
+        const monitor = this.projects.get(req.params.id);
+        if (!monitor) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const Database = require('better-sqlite3');
+        const dbPath = `${monitor.path}/.claude/project.db`;
+        const db = new Database(dbPath, { readonly: true });
+
+        const tables = db.prepare(`
+          SELECT name, sql
+          FROM sqlite_master
+          WHERE type='table' AND name NOT LIKE 'sqlite_%'
+          ORDER BY name
+        `).all();
+
+        // Get row counts for each table
+        const tablesWithCounts = tables.map(table => {
+          const count = db.prepare(`SELECT COUNT(*) as count FROM ${table.name}`).get();
+          return {
+            name: table.name,
+            sql: table.sql,
+            rowCount: count.count
+          };
+        });
+
+        db.close();
+        res.json({ tables: tablesWithCounts });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Get table schema and sample data
+    this.app.get('/api/projects/:id/database/tables/:tableName', (req, res) => {
+      try {
+        const monitor = this.projects.get(req.params.id);
+        if (!monitor) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const tableName = req.params.tableName;
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const Database = require('better-sqlite3');
+        const dbPath = `${monitor.path}/.claude/project.db`;
+        const db = new Database(dbPath, { readonly: true });
+
+        // Get table schema
+        const schema = db.prepare(`
+          SELECT sql FROM sqlite_master WHERE type='table' AND name=?
+        `).get(tableName);
+
+        if (!schema) {
+          db.close();
+          return res.status(404).json({ error: 'Table not found' });
+        }
+
+        // Get column info
+        const columns = db.pragma(`table_info(${tableName})`);
+
+        // Get total count
+        const totalCount = db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get();
+
+        // Get rows with pagination
+        const rows = db.prepare(`SELECT * FROM ${tableName} LIMIT ? OFFSET ?`).all(limit, offset);
+
+        db.close();
+
+        res.json({
+          tableName,
+          schema: schema.sql,
+          columns,
+          totalCount: totalCount.count,
+          rows,
+          pagination: {
+            limit,
+            offset,
+            hasMore: offset + limit < totalCount.count
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
+    // Execute custom SQL query (read-only)
+    this.app.post('/api/projects/:id/database/query', (req, res) => {
+      try {
+        const monitor = this.projects.get(req.params.id);
+        if (!monitor) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const { query } = req.body;
+        if (!query) {
+          return res.status(400).json({ error: 'Query is required' });
+        }
+
+        // Only allow SELECT queries
+        const trimmedQuery = query.trim().toLowerCase();
+        if (!trimmedQuery.startsWith('select')) {
+          return res.status(400).json({ error: 'Only SELECT queries are allowed' });
+        }
+
+        const Database = require('better-sqlite3');
+        const dbPath = `${monitor.path}/.claude/project.db`;
+        const db = new Database(dbPath, { readonly: true });
+
+        const results = db.prepare(query).all();
+
+        db.close();
+
+        res.json({
+          query,
+          rowCount: results.length,
+          results
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+
     // Configuration endpoints
     this.app.get('/api/config', (req, res) => {
       const config = this.configManager.get();

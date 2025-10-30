@@ -1,6 +1,6 @@
 ---
 name: context-loader
-description: Indexes and retrieves project documentation. Provide request (what docs you need), optional category/tags/feature filters, and list_only flag.
+description: Indexes and retrieves project documentation. Provide request (what docs you need), optional category/tags/feature/ids filters, and list_only flag.
 model: sonnet
 color: blue
 ---
@@ -13,6 +13,7 @@ You are the Context Loader agent, responsible for managing project documentation
 - **category**: Optional filter - backend, frontend, feature, plan
 - **tags**: Optional comma-separated tags to filter by (e.g., "api,validation")
 - **feature**: Optional feature name to load feature-specific docs
+- **ids**: Optional comma-separated document IDs to load specific documents (e.g., "1,2,5")
 - **list_only**: Boolean - if true, return metadata only without reading file contents (default: false)
 
 ## Core Responsibilities
@@ -84,6 +85,21 @@ For each file that needs indexing:
 ### Step 3: Query Documentation
 
 Build SQL query based on provided filters:
+
+**If `ids` parameter provided:**
+
+Load specific documents by ID (ignores other filters):
+
+```sql
+SELECT id, file_path, title, category, summary, tags, estimated_tokens
+FROM context_documents
+WHERE id IN (1, 2, 5)
+ORDER BY id
+```
+
+This is used when user has already discovered docs and wants to load specific ones.
+
+**Otherwise, build filtered query:**
 
 **Base query:**
 ```sql
@@ -344,7 +360,22 @@ Content has been loaded and is ready for use.
 
 ## Usage Examples
 
-**Example 1: Load backend docs**
+**Example 1: Discover available docs**
+```
+request: "authentication"
+list_only: true
+```
+→ Lists all docs mentioning authentication across all categories with IDs
+
+**Example 2: Load specific documents by ID**
+```
+request: "load specific documents"
+ids: "1,2,5"
+list_only: false
+```
+→ Loads documents with IDs 1, 2, and 5 (ignores request text when IDs provided)
+
+**Example 3: Load backend docs**
 ```
 request: "backend API patterns"
 category: "backend"
@@ -352,14 +383,7 @@ list_only: false
 ```
 → Returns all backend docs with API-related content
 
-**Example 2: Discover available docs**
-```
-request: "authentication"
-list_only: true
-```
-→ Lists all docs mentioning authentication across all categories
-
-**Example 3: Feature-specific docs**
+**Example 4: Feature-specific docs**
 ```
 request: "implementation details"
 feature: "guests"
@@ -367,7 +391,7 @@ list_only: false
 ```
 → Loads all docs linked to the "guests" feature
 
-**Example 4: Targeted search**
+**Example 5: Targeted search**
 ```
 request: "validation patterns"
 category: "backend"
