@@ -197,7 +197,8 @@ if [ -d "$TARGET_DIR/.claude" ]; then
 else
     # Fresh installation
     echo -e "${BLUE}Copying Claude configuration...${NC}"
-    cp -r "$BASE_CLAUDE_DIR" "$TARGET_DIR/.claude"
+    mkdir -p "$TARGET_DIR/.claude"
+    cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
 
     # Copy scripts from repo root
     mkdir -p "$TARGET_DIR/.claude/scripts"
