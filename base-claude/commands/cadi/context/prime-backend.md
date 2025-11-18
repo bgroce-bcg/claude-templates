@@ -7,7 +7,7 @@
 1. Read all markdown files in `docs/backend/` directory to understand the backend architecture:
 
 2. If `$FEATURE` argument is provided:
-   - Check if `docs/feature/$FEATURE/` directory exists
+   - Check if `docs/features/$FEATURE/` directory exists
    - If it exists, read all markdown files in that directory for feature-specific details
    - If it doesn't exist, skip this step and proceed with general backend knowledge
 

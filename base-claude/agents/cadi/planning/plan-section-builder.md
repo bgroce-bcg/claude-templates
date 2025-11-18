@@ -135,7 +135,7 @@ Verify: `SELECT status FROM sections WHERE id = ?;`
 If NOT 'completed', retry 2x then log error.
 
 ### Step 6: Document
-Update `docs/feature/{feature-name}/README.md` with files changed.
+Update `docs/features/{feature-name}/README.md` with files changed.
 
 ### Step 7: Report
 See Report section.
