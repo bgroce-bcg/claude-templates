@@ -32,7 +32,7 @@ infer_category() {
         echo "backend"
     elif [[ "$filepath" == *"/frontend/"* ]] || [[ "$filepath" == *"/design/"* ]]; then
         echo "frontend"
-    elif [[ "$filepath" == *"/features/"* ]]; then
+    elif [[ "$filepath" == *"/feature"* ]]; then
         echo "feature"
     elif [[ "$filepath" == *"/plan"* ]] || [[ "$filepath" == *"/scrum/"* ]]; then
         echo "plan"

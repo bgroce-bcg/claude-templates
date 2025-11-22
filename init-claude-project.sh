@@ -104,12 +104,7 @@ if [ -d "$TARGET_DIR/.claude" ]; then
             mkdir -p "$TARGET_DIR/.claude/commands"
             mkdir -p "$TARGET_DIR/.claude/scripts"
             cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
-
-            # Copy scripts from repo root
-            if [ -d "$SCRIPT_DIR/scripts" ]; then
-                cp -r "$SCRIPT_DIR/scripts/"* "$TARGET_DIR/.claude/scripts/"
-                echo -e "${GREEN}✓ Installed documentation scripts${NC}"
-            fi
+            echo -e "${GREEN}✓ Installed documentation scripts${NC}"
 
             # Restore custom files to root of agents/commands (not in cadi/)
             # Skip files that have the same name as CADI files (CADI takes precedence)
@@ -181,12 +176,7 @@ if [ -d "$TARGET_DIR/.claude" ]; then
             mkdir -p "$TARGET_DIR/.claude/commands"
             mkdir -p "$TARGET_DIR/.claude/scripts"
             cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
-
-            # Copy scripts from repo root
-            if [ -d "$SCRIPT_DIR/scripts" ]; then
-                cp -r "$SCRIPT_DIR/scripts/"* "$TARGET_DIR/.claude/scripts/"
-                echo -e "${GREEN}✓ Installed documentation scripts${NC}"
-            fi
+            echo -e "${GREEN}✓ Installed documentation scripts${NC}"
 
             find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true
             echo -e "${GREEN}✓ Updated .claude directory${NC}"
@@ -199,13 +189,7 @@ else
     echo -e "${BLUE}Copying Claude configuration...${NC}"
     mkdir -p "$TARGET_DIR/.claude"
     cp -r "$BASE_CLAUDE_DIR/"* "$TARGET_DIR/.claude/"
-
-    # Copy scripts from repo root
-    mkdir -p "$TARGET_DIR/.claude/scripts"
-    if [ -d "$SCRIPT_DIR/scripts" ]; then
-        cp -r "$SCRIPT_DIR/scripts/"* "$TARGET_DIR/.claude/scripts/"
-        echo -e "${GREEN}✓ Installed documentation scripts${NC}"
-    fi
+    echo -e "${GREEN}✓ Installed documentation scripts${NC}"
 
     # Remove Windows Zone.Identifier files if they exist
     find "$TARGET_DIR/.claude" -name "*:Zone.Identifier" -delete 2>/dev/null || true

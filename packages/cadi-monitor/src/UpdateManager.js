@@ -18,7 +18,12 @@ class UpdateManager extends EventEmitter {
 
     // Path to base-claude template (e.g., /home/user/claude-templates/base-claude)
     this.templatePath = templatePath;
-    this.backupDir = '.claude-backup';
+
+    // Store backups in claude-templates project to keep target project git tree clean
+    // Find the root of claude-templates (parent of base-claude)
+    const claudeTemplatesRoot = path.dirname(templatePath);
+    this.backupDir = path.join(claudeTemplatesRoot, 'backups');
+
     this.schemaManager = new SchemaManager();
 
     // Load manifest - if not provided, ManifestReader will find it automatically
@@ -326,23 +331,28 @@ class UpdateManager extends EventEmitter {
    * Create a backup of the project's .claude directory
    */
   async createBackup(projectPath) {
-    const backupPath = path.join(projectPath, this.backupDir);
     const claudeDir = path.join(projectPath, '.claude');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    // Get project name from path (last directory name)
+    const projectName = path.basename(projectPath);
+
+    // Store backups organized by project name in claude-templates/backups
+    const projectBackupDir = path.join(this.backupDir, projectName);
     const backupName = `backup-${timestamp}`;
-    const backupDestination = path.join(backupPath, backupName);
+    const backupDestination = path.join(projectBackupDir, backupName);
 
     try {
       // Create backup directory if it doesn't exist
-      if (!fs.existsSync(backupPath)) {
-        fs.mkdirSync(backupPath, { recursive: true });
+      if (!fs.existsSync(projectBackupDir)) {
+        fs.mkdirSync(projectBackupDir, { recursive: true });
       }
 
       // Copy .claude directory to backup
       this.copyDirectory(claudeDir, backupDestination);
 
-      // Keep only last 5 backups
-      this.cleanOldBackups(backupPath, 5);
+      // Keep only last 5 backups for this project
+      this.cleanOldBackups(projectBackupDir, 5);
 
       this.emit('backupCreated', {
         projectPath,
@@ -623,13 +633,19 @@ class UpdateManager extends EventEmitter {
 
       // If no backup path specified, use most recent
       if (!actualBackupPath) {
-        const backupDir = path.join(projectPath, this.backupDir);
-        const backups = fs.readdirSync(backupDir, { withFileTypes: true })
+        const projectName = path.basename(projectPath);
+        const projectBackupDir = path.join(this.backupDir, projectName);
+
+        if (!fs.existsSync(projectBackupDir)) {
+          throw new Error('No backups found for this project');
+        }
+
+        const backups = fs.readdirSync(projectBackupDir, { withFileTypes: true })
           .filter(entry => entry.isDirectory() && entry.name.startsWith('backup-'))
           .map(entry => ({
             name: entry.name,
-            path: path.join(backupDir, entry.name),
-            time: fs.statSync(path.join(backupDir, entry.name)).mtime
+            path: path.join(projectBackupDir, entry.name),
+            time: fs.statSync(path.join(projectBackupDir, entry.name)).mtime
           }))
           .sort((a, b) => b.time - a.time);
 
@@ -666,16 +682,17 @@ class UpdateManager extends EventEmitter {
    * List available backups for a project
    */
   listBackups(projectPath) {
-    const backupDir = path.join(projectPath, this.backupDir);
+    const projectName = path.basename(projectPath);
+    const projectBackupDir = path.join(this.backupDir, projectName);
 
-    if (!fs.existsSync(backupDir)) {
+    if (!fs.existsSync(projectBackupDir)) {
       return [];
     }
 
-    return fs.readdirSync(backupDir, { withFileTypes: true })
+    return fs.readdirSync(projectBackupDir, { withFileTypes: true })
       .filter(entry => entry.isDirectory() && entry.name.startsWith('backup-'))
       .map(entry => {
-        const backupPath = path.join(backupDir, entry.name);
+        const backupPath = path.join(projectBackupDir, entry.name);
         const stats = fs.statSync(backupPath);
 
         return {

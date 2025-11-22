@@ -7,6 +7,9 @@ yarn.lock
 .claude/
 *.db
 
+# Backups directory
+backups/
+
 # Logs
 logs/
 *.log
